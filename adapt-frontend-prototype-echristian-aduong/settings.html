@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT — Settings</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-layout">
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item">Plan a Lesson</a>
+    <a href="admin-dashboard.html" class="nav-item">Admin</a>
+  </div>
+
+  <div class="main">
+    <div class="page-title">Settings</div>
+    <div class="page-subtitle">Bring your own LLM API key. Saved for this teacher, encrypted at rest, and never returned in plaintext.</div>
+
+    <div class="card" style="max-width:560px;">
+      <div style="font-size:14px;font-weight:500;margin-bottom:12px;">LLM provider</div>
+      <form id="llm-form">
+        <div class="form-row">
+          <label>Provider</label>
+          <select id="provider">
+            <option value="gemini">Gemini (Google) — recommended</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="huggingface">HuggingFace Inference</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Model</label>
+          <input type="text" id="model" placeholder="auto: chosen per provider">
+        </div>
+        <div class="form-row">
+          <label>API key</label>
+          <input type="password" id="api-key" placeholder="paste new key (existing key is hidden)">
+          <div id="redacted" style="font-size:11px;color:var(--text3);margin-top:4px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-primary" type="submit">Save</button>
+          <button class="btn" type="button" id="test-btn">Test connection</button>
+        </div>
+        <div id="status" style="font-size:12px;color:var(--text2);margin-top:10px;"></div>
+      </form>
+    </div>
+
+    <div class="card" style="max-width:560px;margin-top:14px;">
+      <div style="font-size:13px;font-weight:500;margin-bottom:6px;">Where to get a key</div>
+      <ul style="font-size:12px;color:var(--text2);padding-left:18px;line-height:1.7;">
+        <li><b>Gemini</b>: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-text);">aistudio.google.com/app/apikey</a> (free tier)</li>
+        <li><b>OpenRouter</b>: <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--accent-text);">openrouter.ai/keys</a> (multi-model, free tiers available)</li>
+        <li><b>HuggingFace</b>: <a href="https://huggingface.co/settings/tokens" target="_blank" style="color:var(--accent-text);">huggingface.co/settings/tokens</a> (read access)</li>
+      </ul>
+    </div>
+
+    <div class="card" style="max-width:560px;margin-top:14px;">
+      <div style="font-size:13px;font-weight:500;margin-bottom:6px;">Local fallback</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7;">
+        For a shared local demo, set <code>ADAPT_GEMINI_API_KEY</code> in the project environment. ADAPT will use it only when this teacher has not saved a key here.
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script>
+ADAPT_API.requireLogin();
+
+const tid = ADAPT_API.teacherId();
+const providerEl = document.getElementById("provider");
+const modelEl = document.getElementById("model");
+const keyEl = document.getElementById("api-key");
+const redactedEl = document.getElementById("redacted");
+const statusEl = document.getElementById("status");
+const toastEl = document.getElementById("toast");
+
+function toast(msg, kind = "") {
+  toastEl.textContent = msg;
+  toastEl.className = `toast visible ${kind}`;
+  setTimeout(() => (toastEl.className = "toast"), 2400);
+}
+
+async function loadCurrent() {
+  const cfg = await ADAPT_API.get(`/api/teachers/${tid}/llm-config`);
+  if (cfg) {
+    providerEl.value = cfg.provider;
+    modelEl.value = cfg.model || "";
+    redactedEl.textContent = `Saved key: ${cfg.api_key_redacted} (paste a new one to replace)`;
+  } else {
+    redactedEl.textContent = "No key saved yet.";
+  }
+}
+
+document.getElementById("llm-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!keyEl.value) {
+    toast("paste an API key first", "error");
+    return;
+  }
+  try {
+    await ADAPT_API.put(`/api/teachers/${tid}/llm-config`, {
+      provider: providerEl.value,
+      model: modelEl.value || null,
+      api_key: keyEl.value,
+    });
+    keyEl.value = "";
+    await loadCurrent();
+    toast("saved", "success");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+});
+
+document.getElementById("test-btn").addEventListener("click", async () => {
+  statusEl.textContent = "testing…";
+  try {
+    const r = await ADAPT_API.post(`/api/teachers/${tid}/llm-config/test`, {});
+    if (r.ok) {
+      statusEl.textContent = `✓ ${r.provider}/${r.model || "default"} responded in ${r.latency_ms}ms`;
+      statusEl.style.color = "var(--success-text)";
+    } else {
+      statusEl.textContent = `✗ ${r.error}`;
+      statusEl.style.color = "#b91c1c";
+    }
+  } catch (err) {
+    statusEl.textContent = err.message;
+    statusEl.style.color = "#b91c1c";
+  }
+});
+
+loadCurrent().catch((e) => toast(e.message, "error"));
+</script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT — Admin: Teachers</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item">Plan a Lesson</a>
+    <div class="nav-section">Admin</div>
+    <a href="admin-dashboard.html" class="nav-item">Overview</a>
+    <a href="admin-teachers.html" class="nav-item nav-active">Teachers</a>
+    <a href="admin-classes.html" class="nav-item">Classes</a>
+    <a href="settings.html" class="nav-item" style="margin-top:auto;">Settings</a>
+  </div>
+
+  <div class="main">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div class="page-title">Teachers</div>
+        <div class="page-subtitle">Lincoln Elementary · Springfield District</div>
+      </div>
+      <button class="btn">+ Add teacher</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div class="avatar">MH</div>
+          <div>
+            <div style="font-size:14px;font-weight:500;">Maria Hernandez</div>
+            <div style="font-size:12px;color:var(--text2);">mhernandez@lincoln.edu</div>
+          </div>
+          <span class="badge badge-info" style="margin-left:auto;">Teacher</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="background:var(--surface2);padding:8px;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:500;">2</div>
+            <div style="font-size:10px;color:var(--text3);">Classes</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:500;">12</div>
+            <div style="font-size:10px;color:var(--text3);">Students</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:500;">8</div>
+            <div style="font-size:10px;color:var(--text3);">Adaptations</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--text3);">Classes: 2nd Grade CS - Section A, 2nd Grade CS - Section B</div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div class="avatar" style="background:var(--purple-bg);color:var(--purple-text);">RC</div>
+          <div>
+            <div style="font-size:14px;font-weight:500;">Robert Chen</div>
+            <div style="font-size:12px;color:var(--text2);">rchen@lincoln.edu</div>
+          </div>
+          <span class="badge badge-purple" style="margin-left:auto;">Admin</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="background:var(--surface2);padding:8px;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:500;">1</div>
+            <div style="font-size:10px;color:var(--text3);">Classes</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:500;">12</div>
+            <div style="font-size:10px;color:var(--text3);">Students</div>
+          </div>
+          <div style="background:var(--surface2);padding:8px;border-radius:8px;text-align:center;">
+            <div style="font-size:18px;font-weight:500;">4</div>
+            <div style="font-size:10px;color:var(--text3);">Adaptations</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--text3);">Classes: 1st Grade CS</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

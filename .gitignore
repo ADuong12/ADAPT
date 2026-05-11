@@ -1,0 +1,30 @@
+# Secrets and local environment
+.env
+keys.env
+.secret_key
+
+# Local/generated app state
+adapt.db
+chroma_data/
+uploads/
+.server_pid
+server_stdout.log
+server_stderr.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# administrative
+planning/
+outputs/
+wireframes/

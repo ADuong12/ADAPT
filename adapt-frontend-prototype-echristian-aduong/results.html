@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT - Lesson Workspace</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/diff@5.2.0/dist/diff.min.js"></script>
+</head>
+<body>
+<div class="app-layout">
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item nav-active">Plan a Lesson</a>
+    <a href="admin-dashboard.html" class="nav-item">Admin</a>
+  </div>
+
+  <div class="main">
+    <div class="workspace-header">
+      <div>
+        <div class="page-title" id="header-title">Lesson planning workspace</div>
+        <div class="page-subtitle" id="header-sub">Loading your latest lesson draft...</div>
+      </div>
+      <div class="workspace-actions">
+        <button class="btn" id="diff-toggle" style="font-size:12px;">Show redline vs previous</button>
+        <button class="btn" id="rollback-btn" style="font-size:12px;display:none;">Rollback to this version</button>
+        <button class="btn" id="export-btn" style="font-size:12px;">Finalize: Download HTML</button>
+        <button class="btn-primary" id="print-btn" style="font-size:12px;">Open Print View</button>
+      </div>
+    </div>
+
+    <div class="teacher-workspace">
+      <div class="version-timeline" id="timeline">Loading versions...</div>
+
+      <div class="preview-column">
+        <div class="workspace-strip">
+          <div>
+            <div class="section-label">Rendered lesson preview</div>
+            <div style="font-size:12px;color:var(--text2);" id="rag-status">RAG context loading...</div>
+          </div>
+          <span class="badge badge-success" id="head-status">Draft</span>
+        </div>
+        <div id="diff-pane" style="display:none;" class="diff-output card">
+          <div class="section-label">Redline diff</div>
+          <div id="diff-body" style="font-size:13px;line-height:1.7;color:var(--text);"></div>
+        </div>
+        <iframe id="frame" class="plan-frame" sandbox="allow-same-origin"></iframe>
+      </div>
+
+      <div class="teacher-panel">
+        <div class="section-label">Iterate with RAG</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px;">Ask for the next classroom-ready revision</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+          Each request uses the current draft, selected knowledge bases, and your class context to create a new version.
+        </div>
+        <form id="refine-form">
+          <textarea id="refine-input" rows="7" placeholder="Example: Make the unplugged activity easier for multilingual learners and add a Spanish family note."></textarea>
+          <button type="submit" class="btn-primary" id="refine-btn" style="width:100%;margin-top:8px;">Create New Version</button>
+        </form>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 16px;" id="suggestions">
+          <button class="btn" data-prompt="Simplify the warm-up for younger learners." style="font-size:11px;padding:5px 11px;">Simplify warm-up</button>
+          <button class="btn" data-prompt="Add a parent letter in Spanish as a companion material." style="font-size:11px;padding:5px 11px;">Spanish family note</button>
+          <button class="btn" data-prompt="Add an extension activity for above-grade students." style="font-size:11px;padding:5px 11px;">Add extension</button>
+          <button class="btn" data-prompt="Add more scaffolding to the main activity with teacher talk moves." style="font-size:11px;padding:5px 11px;">More scaffolding</button>
+        </div>
+
+        <div class="section-label">Finalize</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;">
+          Download the final HTML file, open it later, and use the browser print dialog to save a PDF.
+        </div>
+        <button class="btn" id="panel-export-btn" style="width:100%;margin-bottom:8px;">Download Final HTML</button>
+        <button class="btn-primary" id="panel-print-btn" style="width:100%;">Open Printable Lesson</button>
+
+        <div class="feedback-box">
+          <div class="section-label">Teacher feedback</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Rate whether this version is ready for your class.</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <span id="stars" style="font-size:18px;cursor:pointer;letter-spacing:2px;"></span>
+          </div>
+          <input type="text" id="feedback-comment" placeholder="Optional note for this draft" style="font-size:12px;">
+          <button class="btn" id="feedback-submit" style="font-size:12px;width:100%;margin-top:8px;">Save Feedback</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script>
+ADAPT_API.requireLogin();
+
+const adaptedId = Number(new URLSearchParams(location.search).get("adapted_id"));
+if (!adaptedId) { document.body.innerHTML = "<pre>missing adapted_id</pre>"; }
+
+const state = {
+  versions: [],
+  selectedId: null,
+  selectedDetail: null,
+  parentDetail: null,
+  diffOpen: false,
+  rating: 0,
+};
+
+const toastEl = document.getElementById("toast");
+function toast(msg, kind = "") {
+  toastEl.textContent = msg;
+  toastEl.className = `toast visible ${kind}`;
+  setTimeout(() => (toastEl.className = "toast"), 2400);
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function renderTimeline() {
+  const el = document.getElementById("timeline");
+  el.innerHTML = `
+    <div class="section-label">Draft history</div>
+    ${state.versions.map((v) => `
+      <div class="version-row ${state.selectedId === v.version_id ? "selected" : ""}" data-id="${v.version_id}">
+        <div>
+          <span class="v-label">Version ${v.version_number}</span>
+          ${v.is_head ? '<span class="head-pill">current</span>' : ""}
+        </div>
+        <div class="v-meta">${fmtDate(v.created_at)}${v.provider ? " - " + v.provider : ""}</div>
+        ${v.instruction ? `<div class="v-instr">"${v.instruction}"</div>` : `<div class="v-instr">Initial RAG draft</div>`}
+      </div>
+    `).join("")}`;
+  el.querySelectorAll(".version-row").forEach((row) => {
+    row.addEventListener("click", () => selectVersion(Number(row.dataset.id)));
+  });
+}
+
+function updateVersionStatus() {
+  if (!state.selectedDetail) return;
+  const detail = state.selectedDetail;
+  document.getElementById("head-status").textContent = detail.is_head ? "Current draft" : "History";
+  document.getElementById("rag-status").textContent = [
+    detail.provider ? `Provider: ${detail.provider}` : null,
+    detail.model_used ? `Model: ${detail.model_used}` : null,
+    detail.token_count ? `${detail.token_count} tokens` : null,
+    detail.parent_version_id ? "Refined from prior version" : "Initial RAG generation",
+  ].filter(Boolean).join(" - ");
+}
+
+async function selectVersion(versionId) {
+  state.selectedId = versionId;
+  state.selectedDetail = await ADAPT_API.get(`/api/adaptations/${adaptedId}/versions/${versionId}`);
+  state.parentDetail = state.selectedDetail.parent_version_id
+    ? await ADAPT_API.get(`/api/adaptations/${adaptedId}/versions/${state.selectedDetail.parent_version_id}`)
+    : null;
+  document.getElementById("frame").srcdoc = state.selectedDetail.rendered_html;
+  document.getElementById("rollback-btn").style.display = state.selectedDetail.is_head ? "none" : "inline-block";
+  document.getElementById("diff-toggle").style.display = state.parentDetail ? "inline-block" : "none";
+  updateVersionStatus();
+  if (state.diffOpen) renderDiff();
+  renderTimeline();
+}
+
+function htmlToText(html) {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return tmp.textContent.replace(/\s+\n/g, "\n").replace(/\n\s+/g, "\n").trim();
+}
+
+function renderDiff() {
+  const pane = document.getElementById("diff-pane");
+  const body = document.getElementById("diff-body");
+  if (!state.parentDetail) { pane.style.display = "none"; return; }
+  pane.style.display = "block";
+  const oldText = htmlToText(state.parentDetail.rendered_html);
+  const newText = htmlToText(state.selectedDetail.rendered_html);
+  const parts = window.Diff.diffWords(oldText, newText);
+  body.innerHTML = parts.map((p) => {
+    const text = p.value.replace(/</g, "&lt;").replace(/\n/g, "<br>");
+    if (p.added) return `<ins>${text}</ins>`;
+    if (p.removed) return `<del>${text}</del>`;
+    return text;
+  }).join("");
+}
+
+document.getElementById("diff-toggle").addEventListener("click", () => {
+  state.diffOpen = !state.diffOpen;
+  document.getElementById("diff-toggle").textContent = state.diffOpen ? "Hide redline" : "Show redline vs previous";
+  if (state.diffOpen) renderDiff();
+  else document.getElementById("diff-pane").style.display = "none";
+});
+
+document.getElementById("rollback-btn").addEventListener("click", async () => {
+  if (!confirm(`Make version ${state.selectedDetail.version_number} the current draft? Later versions stay in history.`)) return;
+  const out = await ADAPT_API.post(`/api/adaptations/${adaptedId}/rollback`, { version_id: state.selectedId });
+  state.versions = out.versions;
+  await selectVersion(state.selectedId);
+  toast("Version restored as current draft", "success");
+});
+
+async function exportSelected() {
+  if (!state.selectedId) return;
+  const tid = ADAPT_API.teacherId();
+  const url = ADAPT_API.url(`/api/adaptations/${adaptedId}/versions/${state.selectedId}/export.html`);
+  try {
+    const res = await fetch(url, { headers: { "X-Teacher-Id": String(tid) } });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `adapt-lesson-${adaptedId}-v${state.selectedDetail.version_number}.html`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast("Final HTML downloaded", "success");
+  } catch (err) {
+    toast(`Download failed: ${err.message}`, "error");
+  }
+}
+
+function openPrintView() {
+  if (!state.selectedId) return;
+  window.open(`print.html?adapted_id=${adaptedId}&version_id=${state.selectedId}&auto=1`, "_blank");
+}
+
+document.getElementById("export-btn").addEventListener("click", exportSelected);
+document.getElementById("panel-export-btn").addEventListener("click", exportSelected);
+document.getElementById("print-btn").addEventListener("click", openPrintView);
+document.getElementById("panel-print-btn").addEventListener("click", openPrintView);
+
+document.querySelectorAll("#suggestions .btn").forEach((b) => {
+  b.addEventListener("click", () => { document.getElementById("refine-input").value = b.dataset.prompt; });
+});
+
+document.getElementById("refine-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const instruction = document.getElementById("refine-input").value.trim();
+  if (!instruction) return;
+  const btn = document.getElementById("refine-btn");
+  btn.disabled = true;
+  btn.textContent = "Using RAG to revise...";
+  try {
+    const out = await ADAPT_API.post(`/api/adaptations/${adaptedId}/refine`, { instruction });
+    state.versions = out.versions;
+    document.getElementById("refine-input").value = "";
+    await selectVersion(out.head_version.version_id);
+    toast(`Saved as version ${out.head_version.version_number}`, "success");
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Create New Version";
+  }
+});
+
+function renderStars() {
+  document.getElementById("stars").innerHTML = [1, 2, 3, 4, 5]
+    .map((n) => `<span data-n="${n}" style="color:${n <= state.rating ? "#D97706" : "rgba(0,0,0,0.32)"}">${n}</span>`)
+    .join("");
+}
+document.getElementById("stars").addEventListener("click", (e) => {
+  const n = Number(e.target.dataset?.n);
+  if (n) { state.rating = n; renderStars(); }
+});
+document.getElementById("feedback-submit").addEventListener("click", async () => {
+  if (!state.rating) { toast("Pick a rating first", "error"); return; }
+  await ADAPT_API.post(`/api/adaptations/${adaptedId}/feedback`, {
+    rating: state.rating,
+    comments: document.getElementById("feedback-comment").value || null,
+  });
+  toast("Feedback saved", "success");
+});
+renderStars();
+
+(async () => {
+  try {
+    const out = await ADAPT_API.get(`/api/adaptations/${adaptedId}`);
+    state.versions = out.versions;
+    document.getElementById("header-title").textContent = `Lesson planning workspace #${adaptedId}`;
+    document.getElementById("header-sub").textContent =
+      `${out.versions.length} version${out.versions.length === 1 ? "" : "s"} - current draft: version ${out.head_version.version_number}`;
+    await selectVersion(out.head_version.version_id);
+  } catch (e) {
+    document.getElementById("header-sub").textContent = e.message;
+  }
+})();
+</script>
+</body>
+</html>

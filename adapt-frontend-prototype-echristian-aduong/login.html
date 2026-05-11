@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT — Sign in</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card">
+    <div class="logo">ADAPT</div>
+    <div class="tag">AI lesson planning for K–12 CS teachers — local development build</div>
+
+    <div class="section-label">Pick a seeded teacher</div>
+    <div class="teacher-pick" id="teacher-list">
+      <div style="font-size:12px;color:var(--text3);">Loading teachers…</div>
+    </div>
+
+    <div class="section-label" style="margin-top:18px;">Or sign in with anything</div>
+    <form id="manual-form" autocomplete="off">
+      <div class="form-row">
+        <label>Email or username</label>
+        <input type="text" id="username" placeholder="anything works" required>
+      </div>
+      <div class="form-row">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="anything works" required>
+      </div>
+      <button class="btn-primary" type="submit" style="width:100%;">Sign in</button>
+    </form>
+    <div style="font-size:11px;color:var(--text3);margin-top:14px;">
+      This is a fakeauth screen. Real auth lands in a later phase.
+    </div>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script>
+async function loadTeachers() {
+  const list = document.getElementById("teacher-list");
+  try {
+    const teachers = await ADAPT_API.get("/api/auth/teachers");
+    list.innerHTML = "";
+    teachers.forEach((t) => {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.cursor = "pointer";
+      div.innerHTML = `
+        <div style="font-size:13px;font-weight:500;">${t.first_name} ${t.last_name}</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">${t.email}</div>
+        <div style="font-size:11px;color:var(--text3);">${t.role}</div>
+      `;
+      div.addEventListener("click", () => loginAs(t));
+      list.appendChild(div);
+    });
+  } catch (e) {
+    list.innerHTML = `<div style="font-size:12px;color:#b91c1c;">Cannot reach backend: ${e.message}<br>Start it with: <code>uvicorn backend.main:app --reload</code></div>`;
+  }
+}
+
+function loginAs(teacher) {
+  localStorage.setItem("currentTeacherId", String(teacher.teacher_id));
+  localStorage.setItem("currentTeacherName", `${teacher.first_name} ${teacher.last_name}`);
+  localStorage.setItem("currentTeacherRole", teacher.role || "teacher");
+  location.href = "dashboard.html";
+}
+
+document.getElementById("manual-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const teacher = await ADAPT_API.post("/api/auth/fake-login", {
+      username: document.getElementById("username").value,
+      password: document.getElementById("password").value,
+    });
+    loginAs(teacher);
+  } catch (err) {
+    alert("backend not reachable: " + err.message);
+  }
+});
+
+loadTeachers();
+</script>
+</body>
+</html>

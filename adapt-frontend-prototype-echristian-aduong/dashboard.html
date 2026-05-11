@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT — Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item nav-active">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item">Plan a Lesson</a>
+    <a href="admin-dashboard.html" class="nav-item">Admin</a>
+  </div>
+
+  <div class="main">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div class="page-title" id="page-title">Welcome…</div>
+        <div class="page-subtitle" id="page-subtitle">Loading…</div>
+      </div>
+      <a href="personalize.html" class="btn-primary">Plan a Lesson</a>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;" id="metrics"></div>
+
+    <div class="section-label">Recent lesson drafts</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;" id="recent"></div>
+
+    <div class="section-label">Students and support profiles</div>
+    <div id="roster"></div>
+  </div>
+
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script>
+ADAPT_API.requireLogin();
+const tid = ADAPT_API.teacherId();
+
+const colors = ["badge-info", "badge-success", "badge-warn", "badge-purple"];
+function pickBadge(text) {
+  if (!text) return "badge-info";
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+  return colors[Math.abs(h) % colors.length];
+}
+
+function metric(label, value) {
+  return `<div class="metric"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+}
+
+async function load() {
+  try {
+    const d = await ADAPT_API.get(`/api/teachers/${tid}/dashboard`);
+    const t = d.teacher;
+    document.getElementById("page-title").textContent = `Welcome back, ${t.first_name} ${t.last_name}`;
+    const inst = d.institution ? d.institution.name : "Independent";
+    const m = d.metrics;
+    document.getElementById("page-subtitle").textContent =
+      `${inst} - ${m.classes} class${m.classes === 1 ? "" : "es"} - ${m.students} students - ${m.clusters} learner profiles`;
+
+    document.getElementById("metrics").innerHTML =
+      metric("Learner profiles", m.clusters) +
+      metric("Lesson drafts", m.adaptations) +
+      metric("Knowledge bases", m.knowledge_bases) +
+      metric("Students", m.students);
+
+    document.getElementById("recent").innerHTML = d.recent_adaptations.length
+      ? d.recent_adaptations
+          .map(
+            (r) => `
+        <a href="results.html?adapted_id=${r.adapted_id}" class="card" style="text-decoration:none;color:inherit;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="font-size:13px;font-weight:500;">${r.lesson_title}</div>
+            <span class="badge badge-info">v${r.head_version_number}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin:4px 0;">
+            ${r.grade_level || ""}${r.cs_topic ? " · " + r.cs_topic : ""}
+          </div>
+          <span class="badge ${pickBadge(r.cluster_name)}">${r.cluster_name}</span>
+        </a>`
+          )
+          .join("")
+      : `<div style="font-size:12px;color:var(--text3);grid-column:1/-1;">No lesson drafts yet. <a href="personalize.html" style="color:var(--accent-text);">Create your first one →</a></div>`;
+
+    document.getElementById("roster").innerHTML = d.roster
+      .map((s) => {
+        const initials = s.student_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+        const badge = s.cluster_name
+          ? `<span class="badge ${pickBadge(s.cluster_name)}">${s.cluster_name}</span>`
+          : "";
+        return `<div class="roster-row"><div class="avatar">${initials}</div><div style="flex:1">${s.student_name}</div>${badge}</div>`;
+      })
+      .join("");
+  } catch (e) {
+    document.getElementById("page-subtitle").textContent = "Couldn't load dashboard: " + e.message;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

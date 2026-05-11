@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ lesson.title }} — {{ cluster.cluster_name }}</title>
+<style>
+  :root { --ink:#1a1a18; --muted:#6b6a65; --line:rgba(0,0,0,0.10); --accent:#1E40AF; --soft:#F3F2EE; --amber:#D97706; --teal:#0D9488; --purple:#5B21B6; }
+  body { font-family: 'Fraunces', 'DM Sans', Georgia, system-ui, sans-serif; color: var(--ink); max-width: 760px; margin: 32px auto; padding: 0 24px; line-height: 1.55; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 12px; color: var(--muted); margin-bottom: 24px; }
+  .meta b { color: var(--ink); font-weight: 500; }
+  section { margin: 28px 0; }
+  section h2 { font-size: 18px; margin: 0 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
+  .rec { border-left: 3px solid var(--accent); padding: 10px 14px; background: var(--soft); margin: 10px 0; }
+  .rec.udl { border-left-color: var(--amber); }
+  .rec.mll { border-left-color: var(--teal); }
+  .rec.crp { border-left-color: var(--purple); }
+  .rec h3 { font-size: 14px; margin: 0 0 4px; font-weight: 500; }
+  .rec p { font-size: 13px; color: var(--muted); margin: 0; }
+  .rec .src { font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .step { margin: 12px 0; }
+  .step h3 { font-size: 14px; margin: 0 0 4px; font-weight: 500; }
+  .step p { font-size: 13px; color: var(--muted); margin: 0; }
+  .materials { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .material { background: var(--soft); padding: 12px 14px; border-radius: 8px; }
+  .material h3 { font-size: 13px; margin: 0 0 4px; font-weight: 500; }
+  .material p { font-size: 12px; color: var(--muted); margin: 0; }
+  ins { background: #d1fae5; text-decoration: none; padding: 0 2px; border-radius: 2px; }
+  del { background: #fee2e2; padding: 0 2px; border-radius: 2px; }
+  @media print {
+    @page { margin: 0.6in; }
+    body { margin: 0; max-width: none; }
+    section { break-inside: avoid; }
+    .no-print { display: none !important; }
+    a[href]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: var(--muted); }
+  }
+</style>
+</head>
+<body>
+  <h1>{{ lesson.title }}</h1>
+  <div class="subtitle">Adapted for {{ cluster.cluster_name }}{% if cluster.cluster_description %} — {{ cluster.cluster_description }}{% endif %}</div>
+  <div class="meta">
+    <span><b>Grade:</b> {{ lesson.grade_level or "—" }}</span>
+    <span><b>Topic:</b> {{ lesson.cs_topic or "—" }}</span>
+    <span><b>Standard:</b> {{ lesson.cs_standard or "—" }}</span>
+    {% if model_used %}<span><b>Model:</b> {{ provider }} / {{ model_used }}</span>{% endif %}
+  </div>
+
+  <section id="recommendations">
+    <h2>Recommendations</h2>
+    {% for rec in recommendations %}
+      <div class="rec {{ rec.tag or '' }}">
+        <h3>{{ rec.title }}</h3>
+        <p>{{ rec.body }}</p>
+        {% if rec.sources %}<div class="src">Source: {{ rec.sources | join(", ") }}</div>{% endif %}
+      </div>
+    {% else %}
+      <p class="rec"><em>No recommendations were returned.</em></p>
+    {% endfor %}
+  </section>
+
+  <section id="adapted-plan">
+    <h2>Adapted lesson plan</h2>
+    {% for step in plan_steps %}
+      <div class="step">
+        <h3>{{ step.title }}{% if step.duration %} ({{ step.duration }}){% endif %}</h3>
+        <p>{{ step.body }}</p>
+      </div>
+    {% else %}
+      <p><em>No plan was returned.</em></p>
+    {% endfor %}
+  </section>
+
+  <section id="companion-materials">
+    <h2>Companion materials</h2>
+    {% if companion_materials %}
+      <div class="materials">
+        {% for mat in companion_materials %}
+          <div class="material">
+            <h3>{{ mat.title }}</h3>
+            <p>{{ mat.description }}</p>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p><em>No companion materials were generated.</em></p>
+    {% endif %}
+  </section>
+
+  {% if knowledge_bases_used %}
+  <section id="kbs-used">
+    <h2>Knowledge bases referenced</h2>
+    <ul>
+      {% for kb in knowledge_bases_used %}
+        <li><b>KB #{{ kb.kb_id }} — {{ kb.kb_name }}</b>{% if kb.category %} ({{ kb.category }}){% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT - Plan a Lesson</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-layout">
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item nav-active">Plan a Lesson</a>
+    <a href="admin-dashboard.html" class="nav-item">Admin</a>
+  </div>
+
+  <div class="main">
+    <div id="stepper" style="display:flex;gap:4px;margin-bottom:18px;align-items:center;flex-wrap:wrap;"></div>
+
+    <!-- Step 1 -->
+    <div class="step-wrap active" id="step-1">
+      <div style="font-size:16px;font-weight:500;">Step 1: Select a base lesson</div>
+      <div style="font-size:13px;color:var(--text2);margin:4px 0 14px;">Choose an existing CS lesson to adapt for your students.</div>
+      <input type="search" placeholder="Search lessons..." id="lesson-search" style="margin-bottom:12px;">
+      <div id="lesson-cards" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="grid-column:1/-1;font-size:12px;color:var(--text3);">Loading lessons…</div>
+      </div>
+      <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+        <button class="btn-primary" id="to-step-2" disabled>Next: choose profile &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-wrap" id="step-2">
+      <div style="font-size:16px;font-weight:500;">Step 2: Pick the learner profile</div>
+      <div style="font-size:13px;color:var(--text2);margin:4px 0 14px;">Choose the group of students you are planning for today.</div>
+      <div id="cluster-list">Loading learner profiles…</div>
+      <div style="margin-top:14px;display:flex;justify-content:space-between;">
+        <button class="btn" onclick="goStep(1)">&larr; Back</button>
+        <button class="btn-primary" id="to-step-3" disabled>Next: knowledge bases &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-wrap" id="step-3">
+      <div style="font-size:16px;font-weight:500;">Step 3: Review RAG sources</div>
+      <div style="font-size:13px;color:var(--text2);margin:4px 0 14px;">These KB IDs are linked to the learner profile. Adjust the source set before generating.</div>
+      <div id="kb-list">Loading…</div>
+      <div style="margin-top:14px;display:flex;justify-content:space-between;">
+        <button class="btn" onclick="goStep(2)">&larr; Back</button>
+        <button class="btn-primary" id="to-step-4">Generate lesson draft &rarr;</button>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-wrap" id="step-4">
+      <div style="font-size:16px;font-weight:500;">Generating…</div>
+      <div style="font-size:13px;color:var(--text2);margin:4px 0 14px;" id="gen-sub">Retrieving RAG context and drafting a teacher-reviewed plan.</div>
+      <div class="progress-bar"><div class="progress-fill" id="pbar" style="width:0%"></div></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;" id="pbar-label">Retrieving knowledge base chunks…</div>
+      <div id="gen-error" style="display:none;font-size:13px;color:#b91c1c;margin-top:14px;background:#fef2f2;padding:12px;border-radius:8px;"></div>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script>
+ADAPT_API.requireLogin();
+
+const state = {
+  lessons: [],
+  clusters: [],
+  kbsForCluster: [],
+  selectedLessonId: null,
+  selectedClusterId: null,
+  selectedKbIds: new Set(),
+};
+
+let currentStep = 1;
+const stepLabels = ["Select lesson", "Learner profile", "RAG sources", "Draft"];
+
+function renderStepper() {
+  const el = document.getElementById("stepper");
+  el.innerHTML = "";
+  stepLabels.forEach((label, i) => {
+    const s = i + 1;
+    const pill = document.createElement("span");
+    pill.className = "pill " + (s === currentStep ? "pill-on" : s < currentStep ? "pill-done" : "pill-off");
+    pill.textContent = s + ". " + label;
+    pill.onclick = () => { if (s <= currentStep) goStep(s); };
+    el.appendChild(pill);
+    if (i < stepLabels.length - 1) {
+      const d = document.createElement("span");
+      d.style.cssText = "width:16px;height:1px;background:rgba(0,0,0,0.12);display:inline-block;vertical-align:middle;";
+      el.appendChild(d);
+    }
+  });
+}
+
+function goStep(n) {
+  document.querySelectorAll(".step-wrap").forEach((el) => el.classList.remove("active"));
+  document.getElementById("step-" + n).classList.add("active");
+  currentStep = n;
+  renderStepper();
+  if (n === 4) runGeneration();
+}
+
+const colors = ["badge-info", "badge-success", "badge-warn", "badge-purple"];
+function pickBadge(t) { let h=0; for(let i=0;i<(t||"").length;i++) h=(h*31+t.charCodeAt(i))|0; return colors[Math.abs(h)%colors.length]; }
+
+function renderLessons(filter = "") {
+  const filtered = state.lessons.filter((l) => (l.title + " " + (l.cs_topic||"") + " " + (l.cs_standard||"")).toLowerCase().includes(filter.toLowerCase()));
+  document.getElementById("lesson-cards").innerHTML = filtered.map((l) => `
+    <div class="card ${state.selectedLessonId === l.lesson_id ? "selected" : ""}" data-id="${l.lesson_id}">
+      <div style="font-size:13px;font-weight:500;">${l.title}</div>
+      <div style="font-size:11px;color:var(--text2);margin:4px 0;">${l.grade_level || ""} · ${l.cs_topic || ""}</div>
+      <div style="font-size:11px;color:var(--text3);">CS standard: ${l.cs_standard || "—"}</div>
+    </div>
+  `).join("");
+  document.querySelectorAll("#lesson-cards .card").forEach((card) => {
+    card.addEventListener("click", () => {
+      state.selectedLessonId = Number(card.dataset.id);
+      renderLessons(document.getElementById("lesson-search").value);
+      document.getElementById("to-step-2").disabled = false;
+    });
+  });
+}
+
+function renderClusters() {
+  document.getElementById("cluster-list").innerHTML = state.clusters.map((c) => `
+    <div class="check-row ${state.selectedClusterId === c.cluster_id ? "checked" : ""}" data-id="${c.cluster_id}">
+      <div class="cbox">${state.selectedClusterId === c.cluster_id ? "✓" : ""}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500;">${c.cluster_name}</div>
+        <div style="font-size:11px;color:var(--text2);">${c.student_count} student${c.student_count===1?"":"s"} · ${c.cluster_description || ""}</div>
+      </div>
+      <span class="badge ${pickBadge(c.cluster_name)}">${c.kb_count} KB IDs</span>
+    </div>
+  `).join("");
+  document.querySelectorAll("#cluster-list .check-row").forEach((row) => {
+    row.addEventListener("click", async () => {
+      state.selectedClusterId = Number(row.dataset.id);
+      renderClusters();
+      document.getElementById("to-step-3").disabled = false;
+      // Pre-fetch the KB IDs so step 3 is instant
+      state.kbsForCluster = await ADAPT_API.get(`/api/clusters/${state.selectedClusterId}/kbs`);
+      state.selectedKbIds = new Set(state.kbsForCluster.map((k) => k.kb_id));
+    });
+  });
+}
+
+function renderKBs() {
+  const groups = {};
+  state.kbsForCluster.forEach((k) => (groups[k.category || "Other"] ||= []).push(k));
+  document.getElementById("kb-list").innerHTML = Object.entries(groups).map(([cat, items]) => `
+    <div class="section-label" style="margin-top:8px;">${cat}</div>
+    ${items.map((k) => `
+      <div class="check-row ${state.selectedKbIds.has(k.kb_id) ? "checked" : ""}" data-kb="${k.kb_id}">
+        <div class="cbox">${state.selectedKbIds.has(k.kb_id) ? "✓" : ""}</div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500;">${k.kb_name}</div>
+          <div style="font-size:11px;color:var(--text2);">${k.description || ""}</div>
+        </div>
+      </div>`).join("")}
+  `).join("");
+  document.querySelectorAll("#kb-list .check-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      const kbId = Number(row.dataset.kb);
+      if (state.selectedKbIds.has(kbId)) state.selectedKbIds.delete(kbId);
+      else state.selectedKbIds.add(kbId);
+      renderKBs();
+    });
+  });
+}
+
+document.getElementById("lesson-search").addEventListener("input", (e) => renderLessons(e.target.value));
+document.getElementById("to-step-2").addEventListener("click", () => goStep(2));
+document.getElementById("to-step-3").addEventListener("click", () => { renderKBs(); goStep(3); });
+document.getElementById("to-step-4").addEventListener("click", () => goStep(4));
+
+async function runGeneration() {
+  const pbar = document.getElementById("pbar");
+  const label = document.getElementById("pbar-label");
+  const errorBox = document.getElementById("gen-error");
+  errorBox.style.display = "none";
+  let progress = 5;
+  pbar.style.width = "5%";
+  const stages = ["Retrieving KB chunks...", "Building prompt...", "Calling the teacher-selected LLM...", "Rendering HTML..."];
+  let i = 0;
+  const tick = setInterval(() => {
+    progress = Math.min(progress + 8, 90);
+    pbar.style.width = progress + "%";
+    if (i < stages.length) label.textContent = stages[i++];
+  }, 700);
+
+  try {
+    const result = await ADAPT_API.post("/api/adapt", {
+      lesson_id: state.selectedLessonId,
+      cluster_id: state.selectedClusterId,
+      kb_ids: [...state.selectedKbIds],
+      include_student_context: true,
+    });
+    clearInterval(tick);
+    pbar.style.width = "100%";
+    label.textContent = "Done - opening lesson workspace...";
+    location.href = `results.html?adapted_id=${result.adapted_id}`;
+  } catch (e) {
+    clearInterval(tick);
+    errorBox.style.display = "block";
+    errorBox.innerHTML = `${e.message}<br><br>If you haven't set an LLM key yet, <a href="settings.html">go to Settings</a>.`;
+    label.textContent = "Failed.";
+  }
+}
+
+(async () => {
+  state.lessons = await ADAPT_API.get("/api/lessons");
+  state.clusters = await ADAPT_API.get("/api/clusters");
+  // Preselect lesson if URL has lesson_id
+  const preLesson = new URLSearchParams(location.search).get("lesson_id");
+  if (preLesson) {
+    state.selectedLessonId = Number(preLesson);
+    document.getElementById("to-step-2").disabled = false;
+  }
+  renderLessons();
+  renderClusters();
+  renderStepper();
+})();
+</script>
+</body>
+</html>

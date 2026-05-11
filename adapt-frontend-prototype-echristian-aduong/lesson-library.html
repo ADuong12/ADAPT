@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT - Lesson Library</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-layout">
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item nav-active">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item">Plan a Lesson</a>
+    <a href="admin-dashboard.html" class="nav-item">Admin</a>
+  </div>
+  <div class="main">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:16px;">
+      <div>
+        <div class="page-title">Lesson Library</div>
+        <div class="page-subtitle" id="subtitle">Loading...</div>
+      </div>
+      <a href="personalize.html" class="btn-primary">Plan a Lesson</a>
+    </div>
+
+    <div class="library-workspace">
+      <div>
+        <input type="search" placeholder="Search by title, topic, or standard..." id="search" style="margin-bottom:16px;">
+        <div class="section-label">Base lessons</div>
+        <div id="lessons"></div>
+      </div>
+
+      <div class="teacher-panel">
+        <div class="section-label">AI edit source file</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px;">Create an edited copy</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+          Choose a Word, PowerPoint, or PDF source file and tell ADAPT what to change. Originals stay untouched; DOCX/PPTX copies keep existing text formatting and hyperlinks where possible.
+        </div>
+
+        <div class="form-row">
+          <label>Lesson</label>
+          <select id="edit-lesson"></select>
+        </div>
+        <div class="form-row">
+          <label>Source file</label>
+          <select id="edit-file"></select>
+        </div>
+        <div class="form-row">
+          <label>Learner profile for RAG context</label>
+          <select id="edit-cluster">
+            <option value="">No profile context</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Teacher instruction</label>
+          <textarea id="edit-instruction" rows="6" placeholder="Example: Translate this lesson into Spanish while keeping teacher directions clear and classroom-ready."></textarea>
+        </div>
+        <button class="btn-primary" id="edit-submit" style="width:100%;">Create Edited Copy</button>
+        <div id="edit-status" style="font-size:12px;color:var(--text2);margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script>
+ADAPT_API.requireLogin();
+let lessons = [];
+let clusters = [];
+let sourceFiles = [];
+
+const toastEl = document.getElementById("toast");
+function toast(msg, kind = "") {
+  toastEl.textContent = msg;
+  toastEl.className = `toast visible ${kind}`;
+  setTimeout(() => (toastEl.className = "toast"), 2600);
+}
+
+function render(list) {
+  document.getElementById("lessons").innerHTML = list.map((l) => `
+    <div class="card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-size:14px;font-weight:500;">${l.title}</div>
+          <div style="font-size:12px;color:var(--text2);margin:4px 0;">${l.grade_level || ""} - ${l.cs_topic || ""}</div>
+          <div style="font-size:11px;color:var(--text3);">CS Standard: ${l.cs_standard || "-"}</div>
+        </div>
+        <a href="personalize.html?lesson_id=${l.lesson_id}" class="btn" style="font-size:12px;white-space:nowrap;">Plan</a>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:8px;">${l.objectives || ""}</div>
+    </div>`).join("");
+}
+
+function renderEditLessonOptions() {
+  document.getElementById("edit-lesson").innerHTML = lessons
+    .map((l) => `<option value="${l.lesson_id}">${l.title}</option>`)
+    .join("");
+}
+
+function renderClusterOptions() {
+  document.getElementById("edit-cluster").innerHTML =
+    `<option value="">No profile context</option>` +
+    clusters.map((c) => `<option value="${c.cluster_id}">${c.cluster_name}</option>`).join("");
+}
+
+function renderSourceFiles() {
+  const el = document.getElementById("edit-file");
+  if (!sourceFiles.length) {
+    el.innerHTML = `<option value="">No DOCX, PPTX, or PDF source files found</option>`;
+    return;
+  }
+  el.innerHTML = sourceFiles
+    .map((f) => `<option value="${f.source_path}">${f.filename} (${f.file_type.toUpperCase()})</option>`)
+    .join("");
+}
+
+async function loadSourceFiles() {
+  const lessonId = Number(document.getElementById("edit-lesson").value);
+  if (!lessonId) return;
+  sourceFiles = await ADAPT_API.get(`/api/lessons/${lessonId}/source-files`);
+  renderSourceFiles();
+}
+
+async function downloadEditedFile(result) {
+  const res = await fetch(ADAPT_API.url(result.download_url), {
+    headers: { "X-Teacher-Id": String(ADAPT_API.teacherId()) },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = result.filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+document.getElementById("search").addEventListener("input", (e) => {
+  const q = e.target.value.toLowerCase();
+  render(lessons.filter((l) => [l.title, l.cs_topic, l.cs_standard].join(" ").toLowerCase().includes(q)));
+});
+
+document.getElementById("edit-lesson").addEventListener("change", loadSourceFiles);
+
+document.getElementById("edit-submit").addEventListener("click", async () => {
+  const lessonId = Number(document.getElementById("edit-lesson").value);
+  const sourcePath = document.getElementById("edit-file").value;
+  const clusterIdRaw = document.getElementById("edit-cluster").value;
+  const instruction = document.getElementById("edit-instruction").value.trim();
+  const btn = document.getElementById("edit-submit");
+  const status = document.getElementById("edit-status");
+  if (!lessonId || !sourcePath || !instruction) {
+    toast("Choose a lesson, source file, and instruction first.", "error");
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Creating copy...";
+  status.textContent = "Reading the source file, asking the LLM for edits, and writing a copy.";
+  try {
+    let kbIds = [];
+    const clusterId = clusterIdRaw ? Number(clusterIdRaw) : null;
+    if (clusterId) {
+      const kbs = await ADAPT_API.get(`/api/clusters/${clusterId}/kbs`);
+      kbIds = kbs.map((k) => k.kb_id);
+    }
+    const result = await ADAPT_API.post(`/api/lessons/${lessonId}/edit-source-file`, {
+      source_path: sourcePath,
+      instruction,
+      cluster_id: clusterId,
+      kb_ids: kbIds,
+    });
+    await downloadEditedFile(result);
+    status.textContent = result.note;
+    toast("Edited copy downloaded", "success");
+  } catch (e) {
+    status.textContent = e.message;
+    toast(e.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Create Edited Copy";
+  }
+});
+
+(async () => {
+  [lessons, clusters] = await Promise.all([
+    ADAPT_API.get("/api/lessons"),
+    ADAPT_API.get("/api/clusters"),
+  ]);
+  document.getElementById("subtitle").textContent = `${lessons.length} base lessons available`;
+  render(lessons);
+  renderEditLessonOptions();
+  renderClusterOptions();
+  await loadSourceFiles();
+})();
+</script>
+</body>
+</html>

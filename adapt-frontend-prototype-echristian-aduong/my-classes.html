@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT - My Classes</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item nav-active">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item">Plan a Lesson</a>
+    <a href="admin-dashboard.html" class="nav-item">Admin</a>
+  </div>
+
+  <div class="main">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;gap:16px;">
+      <div>
+        <div class="page-title">My Classes</div>
+        <div class="page-subtitle" id="subtitle">Loading...</div>
+      </div>
+      <a href="personalize.html" class="btn-primary">Plan for a Cluster</a>
+    </div>
+    <div class="teacher-note">
+      Update a student's support profile as their needs change. Future lesson plans use the profile's linked knowledge bases when ADAPT retrieves RAG context.
+    </div>
+    <div id="classes"></div>
+  </div>
+
+</div>
+<div id="toast" class="toast"></div>
+
+<script src="api.js"></script>
+<script src="auth.js"></script>
+<script>
+ADAPT_API.requireLogin();
+const tid = ADAPT_API.teacherId();
+let clusters = [];
+
+const toastEl = document.getElementById("toast");
+function toast(msg, kind = "") {
+  toastEl.textContent = msg;
+  toastEl.className = `toast visible ${kind}`;
+  setTimeout(() => (toastEl.className = "toast"), 2400);
+}
+
+const colors = ["badge-info", "badge-success", "badge-warn", "badge-purple"];
+function pickBadge(t) { if (!t) return "badge-info"; let h=0; for(let i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))|0; return colors[Math.abs(h)%colors.length]; }
+
+function clusterOptions(selectedId) {
+  return clusters.map((c) => `<option value="${c.cluster_id}" ${Number(selectedId) === c.cluster_id ? "selected" : ""}>${c.cluster_name}</option>`).join("");
+}
+
+function render(classes) {
+  const totalStudents = classes.reduce((n, c) => n + c.students.length, 0);
+  document.getElementById("subtitle").textContent = `${classes.length} classes - ${totalStudents} students`;
+  document.getElementById("classes").innerHTML = classes.map((c) => {
+    const activeClusters = new Set(c.students.map((s) => s.cluster_name).filter(Boolean));
+    const rows = c.students.map((s) => {
+      const initials = (s.first_name[0] + s.last_name[0]).toUpperCase();
+      const badge = s.cluster_name ? `<span class="badge ${pickBadge(s.cluster_name)}">${s.cluster_name}</span>` : "";
+      return `
+        <div class="student-edit-row" data-student="${s.student_id}">
+          <div class="avatar">${initials}</div>
+          <div class="student-main">
+            <div style="font-size:13px;font-weight:500;">${s.first_name} ${s.last_name}</div>
+            <div style="font-size:11px;color:var(--text2);">${s.learner_variability || "No notes yet"}</div>
+          </div>
+          <div style="min-width:180px;">${badge}</div>
+          <select class="cluster-select" aria-label="Support profile for ${s.first_name} ${s.last_name}">
+            ${clusterOptions(s.cluster_id)}
+          </select>
+          <button class="btn save-student" style="font-size:12px;">Save</button>
+        </div>`;
+    }).join("");
+    return `
+      <div class="class-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;">
+          <div>
+            <div style="font-size:14px;font-weight:500;">${c.class_name}</div>
+            <div style="font-size:12px;color:var(--text2);">${c.grade_band || ""} - ${c.subject || ""} - ${c.students.length} students</div>
+          </div>
+          <span class="badge badge-info">${activeClusters.size} active profiles</span>
+        </div>
+        <div class="section-label">Roster and support profile</div>
+        ${rows}
+      </div>`;
+  }).join("");
+
+  document.querySelectorAll(".save-student").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest(".student-edit-row");
+      const studentId = Number(row.dataset.student);
+      const clusterId = Number(row.querySelector(".cluster-select").value);
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+      try {
+        await ADAPT_API.patch(`/api/teachers/${tid}/students/${studentId}`, { cluster_id: clusterId });
+        toast("Student support profile updated", "success");
+        await load();
+      } catch (e) {
+        toast(e.message, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Save";
+      }
+    });
+  });
+}
+
+async function load() {
+  const [classes, clusterList] = await Promise.all([
+    ADAPT_API.get(`/api/teachers/${tid}/classes`),
+    ADAPT_API.get("/api/clusters"),
+  ]);
+  clusters = clusterList;
+  render(classes);
+}
+
+load().catch((e) => document.getElementById("subtitle").textContent = e.message);
+</script>
+</body>
+</html>

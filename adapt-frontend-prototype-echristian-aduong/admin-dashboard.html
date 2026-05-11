@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADAPT — Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Fraunces:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-layout">
+
+  <div class="sidebar">
+    <div class="logo">ADAPT</div>
+    <a href="dashboard.html" class="nav-item">Dashboard</a>
+    <a href="my-classes.html" class="nav-item">My Classes</a>
+    <a href="lesson-library.html" class="nav-item">Lesson Library</a>
+    <a href="kb-browser.html" class="nav-item">Knowledge Bases</a>
+    <a href="personalize.html" class="nav-item">Plan a Lesson</a>
+    <div class="nav-section">Admin</div>
+    <a href="admin-dashboard.html" class="nav-item nav-active">Overview</a>
+    <a href="admin-teachers.html" class="nav-item">Teachers</a>
+    <a href="admin-classes.html" class="nav-item">Classes</a>
+    <a href="settings.html" class="nav-item" style="margin-top:auto;">Settings</a>
+  </div>
+
+  <div class="main">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div class="page-title">Lincoln Elementary</div>
+        <div class="page-subtitle">Springfield District · 2 teachers · 3 classes · 24 students</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+      <div class="metric"><div class="label">Teachers</div><div class="value">2</div></div>
+      <div class="metric"><div class="label">Classes</div><div class="value">3</div></div>
+      <div class="metric"><div class="label">Students</div><div class="value">24</div></div>
+      <div class="metric"><div class="label">Adaptations</div><div class="value">12</div></div>
+    </div>
+
+    <div class="section-label">Teachers at this institution</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Teacher</th>
+            <th>Email</th>
+            <th>Classes</th>
+            <th>Students</th>
+            <th>Adaptations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="avatar">MH</div>
+                <div>
+                  <div style="font-weight:500;">Maria Hernandez</div>
+                  <div style="font-size:11px;color:var(--text3);">2nd Grade CS</div>
+                </div>
+              </div>
+            </td>
+            <td>mhernandez@lincoln.edu</td>
+            <td><span class="badge badge-info">2 classes</span></td>
+            <td>12 students</td>
+            <td><span class="badge badge-success">8 adaptations</span></td>
+          </tr>
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div class="avatar" style="background:var(--purple-bg);color:var(--purple-text);">RC</div>
+                <div>
+                  <div style="font-weight:500;">Robert Chen</div>
+                  <div style="font-size:11px;color:var(--text3);">Admin / 1st Grade CS</div>
+                </div>
+              </div>
+            </td>
+            <td>rchen@lincoln.edu</td>
+            <td><span class="badge badge-info">1 class</span></td>
+            <td>12 students</td>
+            <td><span class="badge badge-success">4 adaptations</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-label">Class overview</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Class</th>
+            <th>Teacher</th>
+            <th>Grade Band</th>
+            <th>Students</th>
+            <th>Top Clusters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:500;">2nd Grade CS - Section A</td>
+            <td>Maria Hernandez</td>
+            <td>K-2</td>
+            <td>6</td>
+            <td>
+              <span class="badge badge-info">Below grade</span>
+              <span class="badge badge-warn">Spanish MLL</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:500;">2nd Grade CS - Section B</td>
+            <td>Maria Hernandez</td>
+            <td>K-2</td>
+            <td>6</td>
+            <td>
+              <span class="badge badge-purple">Attention</span>
+              <span class="badge badge-success">Urban</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-weight:500;">1st Grade CS</td>
+            <td>Robert Chen</td>
+            <td>K-2</td>
+            <td>12</td>
+            <td>
+              <span class="badge badge-success">Indigenous</span>
+              <span class="badge badge-info">On grade</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-label">Cluster distribution across institution</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;">Below grade</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">3 students · 2 classes</div>
+        <div style="font-size:11px;color:var(--text3);">4 KBs available</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;">On grade</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">8 students · 3 classes</div>
+        <div style="font-size:11px;color:var(--text3);">2 KBs available</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;">Above grade</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">3 students · 2 classes</div>
+        <div style="font-size:11px;color:var(--text3);">4 KBs available</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;">Spanish MLL</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">2 students · 1 class</div>
+        <div style="font-size:11px;color:var(--text3);">4 KBs available</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;">Attention issues</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">2 students · 1 class</div>
+        <div style="font-size:11px;color:var(--text3);">4 KBs available</div>
+      </div>
+      <div class="card">
+        <div style="font-size:13px;font-weight:500;">Indigenous</div>
+        <div style="font-size:11px;color:var(--text2);margin:4px 0;">1 student · 1 class</div>
+        <div style="font-size:11px;color:var(--text3);">3 KBs available</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
