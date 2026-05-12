@@ -4,6 +4,8 @@ const config = require('./config');
 const indexRoutes = require('./routes/index');
 const authRoutes = require('./routes/auth');
 const teacherRoutes = require('./routes/teachers');
+const errorHandler = require('./middleware/errorHandler');
+const { NotFoundError } = require('./errors');
 
 const app = express();
 
@@ -16,13 +18,12 @@ app.use('/api', indexRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teacherRoutes);
 
-// Placeholder error handler (replaced in Plan 3)
-app.use((err, req, res, next) => {
-  const status = err.status || 500;
-  const response = { error: err.message || 'Internal server error', status };
-  if (err.detail) response.detail = err.detail;
-  if (config.nodeEnv !== 'production' && status === 500) response.stack = err.stack;
-  res.status(status).json(response);
+// Catch-all 404 handler
+app.use((req, res, next) => {
+  next(new NotFoundError('Resource'));
 });
+
+// Error handler (must be last)
+app.use(errorHandler);
 
 module.exports = app;
