@@ -5,11 +5,16 @@ keys.env
 
 # Local/generated app state
 adapt.db
+adapt.db-shm
+adapt.db-wal
 chroma_data/
 uploads/
 .server_pid
 server_stdout.log
 server_stderr.log
+
+# Node
+node_modules/
 
 # Python
 __pycache__/
@@ -29,3 +34,4 @@ planning/
 outputs/
 wireframes/
 graphify-out/
+.planning/tmp/
