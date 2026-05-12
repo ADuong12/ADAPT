@@ -5,6 +5,20 @@ const authService = require('../services/auth');
 const db = require('../db');
 const config = require('../config');
 const { ValidationError, AuthError, AppError } = require('../errors');
+const requireAuth = require('../middleware/auth');
+
+// GET /api/auth/me — returns current user from JWT
+router.get('/me', requireAuth, (req, res) => {
+  const teacher = db.prepare(
+    'SELECT teacher_id, first_name, last_name, email, institution_id, role FROM teacher WHERE teacher_id = ?'
+  ).get(req.user.teacher_id);
+
+  if (!teacher) {
+    throw new AuthError('User not found');
+  }
+
+  res.json(teacher);
+});
 
 // POST /api/auth/register
 router.post('/register', (req, res) => {

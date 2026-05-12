@@ -3,6 +3,7 @@ const cors = require('cors');
 const config = require('./config');
 const indexRoutes = require('./routes/index');
 const authRoutes = require('./routes/auth');
+const teacherRoutes = require('./routes/teachers');
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(express.json());
 // Routes
 app.use('/api', indexRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/teachers', teacherRoutes);
 
 // Placeholder error handler (replaced in Plan 3)
 app.use((err, req, res, next) => {
