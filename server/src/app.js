@@ -3,7 +3,6 @@ const cors = require('cors');
 const config = require('./config');
 const indexRoutes = require('./routes/index');
 const authRoutes = require('./routes/auth');
-const teacherRoutes = require('./routes/teachers');
 const errorHandler = require('./middleware/errorHandler');
 const { NotFoundError } = require('./errors');
 
@@ -16,7 +15,6 @@ app.use(express.json());
 // Routes
 app.use('/api', indexRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/teachers', teacherRoutes);
 
 // Catch-all 404 handler
 app.use((req, res, next) => {
