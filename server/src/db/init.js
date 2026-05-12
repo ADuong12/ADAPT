@@ -4,12 +4,20 @@ const config = require('../config');
 const db = require('./index');
 
 function initSchema() {
-  // Read and execute adapt-database.sql from project root
-  const sqlPath = path.join(config.rootDir, 'adapt-database.sql');
-  const sql = fs.readFileSync(sqlPath, 'utf8');
-  db.exec(sql);
+  // Check if schema already initialized (teacher table exists and has data)
+  const tableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='teacher'"
+  ).get();
 
-  // Add password_hash column to teacher table (idempotent — SQLite throws if already exists)
+  if (!tableExists) {
+    // Fresh database — run full SQL file to create tables and seed data
+    const sqlPath = path.join(config.rootDir, 'adapt-database.sql');
+    const sql = fs.readFileSync(sqlPath, 'utf8');
+    db.exec(sql);
+  }
+  // If data exists, schema is already initialized — skip SQL file
+
+  // Add password_hash column to teacher table (idempotent)
   try {
     db.exec('ALTER TABLE teacher ADD COLUMN password_hash TEXT');
   } catch (err) {
@@ -18,7 +26,7 @@ function initSchema() {
     }
   }
 
-  // Create refresh_token table
+  // Create refresh_token table (idempotent)
   db.exec(`
     CREATE TABLE IF NOT EXISTS refresh_token (
       token_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +37,7 @@ function initSchema() {
     )
   `);
 
-  // Create indexes for refresh token lookups
+  // Create indexes for refresh token lookups (idempotent)
   db.exec('CREATE INDEX IF NOT EXISTS idx_refresh_token_hash ON refresh_token(token_hash)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_refresh_token_teacher ON refresh_token(teacher_id)');
 }
