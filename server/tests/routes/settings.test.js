@@ -1,7 +1,7 @@
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
-const config = require('../src/config');
+const config = require('../../src/config');
 
 const BASE = 'http://localhost:3000';
 
@@ -101,5 +101,41 @@ describe('Settings endpoints', () => {
     });
     assert.equal(status, 200);
     assert.equal(data.provider, 'openai');
+  });
+
+  // END: Gap 3 - Cross-tenant LLM config access
+  it('GET /api/teachers/2/llm-config with teacher 1 token → 403', async () => {
+    const { status } = await api('/api/teachers/2/llm-config', {
+      headers: { Authorization: authHeader }
+    });
+    assert.equal(status, 403);
+  });
+
+  it('PUT /api/teachers/2/llm-config with teacher 1 token → 403', async () => {
+    const { status } = await api('/api/teachers/2/llm-config', {
+      method: 'PUT',
+      headers: { Authorization: authHeader },
+      body: { provider: 'openrouter', api_key: 'sk-cross-tenant' }
+    });
+    assert.equal(status, 403);
+  });
+
+  // END: Gap 4 - LLM config PUT validation
+  it('PUT /api/teachers/1/llm-config with missing api_key → 400', async () => {
+    const { status, data } = await api('/api/teachers/1/llm-config', {
+      method: 'PUT',
+      headers: { Authorization: authHeader },
+      body: { provider: 'openrouter' }
+    });
+    assert.equal(status, 400);
+  });
+
+  it('PUT /api/teachers/1/llm-config with empty provider → 400', async () => {
+    const { status, data } = await api('/api/teachers/1/llm-config', {
+      method: 'PUT',
+      headers: { Authorization: authHeader },
+      body: { provider: '', api_key: 'sk-test-key-123' }
+    });
+    assert.equal(status, 400);
   });
 });

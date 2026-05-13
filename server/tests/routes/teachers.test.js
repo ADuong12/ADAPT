@@ -1,7 +1,7 @@
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
-const config = require('../src/config');
+const config = require('../../src/config');
 
 const BASE = 'http://localhost:3000';
 
@@ -55,11 +55,11 @@ describe('Teachers endpoints', () => {
       assert.ok(Array.isArray(data.roster));
     });
 
-    it('GET /api/teachers/9999/dashboard → 404', async () => {
+    it('GET /api/teachers/9999/dashboard → 403 (non-owner)', async () => {
       const { status } = await api('/api/teachers/9999/dashboard', {
         headers: { Authorization: authHeader }
       });
-      assert.equal(status, 404);
+      assert.equal(status, 403);
     });
   });
 
@@ -99,6 +99,26 @@ describe('Teachers endpoints', () => {
       });
       assert.equal(status, 403);
     });
+
+    it('PATCH /api/teachers/1/students/1 with non-existent cluster_id → 404', async () => {
+      const { status, data } = await api('/api/teachers/1/students/1', {
+        method: 'PATCH',
+        headers: { Authorization: authHeader },
+        body: { cluster_id: 99999 }
+      });
+      assert.equal(status, 404);
+      assert.ok(data.error.toLowerCase().includes('cluster'), `Expected "cluster" in error, got: ${data.error}`);
+    });
+
+    it('PATCH /api/teachers/1/students/99999 (non-existent student) → 404', async () => {
+      const { status, data } = await api('/api/teachers/1/students/99999', {
+        method: 'PATCH',
+        headers: { Authorization: authHeader },
+        body: { cluster_id: 2 }
+      });
+      assert.equal(status, 404);
+      assert.ok(data.error.toLowerCase().includes('student'), `Expected "student" in error, got: ${data.error}`);
+    });
   });
 
   describe('Profile', () => {
@@ -133,6 +153,36 @@ describe('Teachers endpoints', () => {
       });
       assert.equal(status, 200);
       assert.equal(data.email, 'mhernandez@lincoln.edu'); // Original email unchanged
+    });
+
+    // END: Gap 2 - Profile PUT validation
+    it('PUT /api/teachers/1/profile with empty first_name → 400', async () => {
+      const { status, data } = await api('/api/teachers/1/profile', {
+        method: 'PUT',
+        headers: { Authorization: authHeader },
+        body: { first_name: '', last_name: 'Valid' }
+      });
+      assert.equal(status, 400);
+      assert.ok(data.error.toLowerCase().includes('first_name'), `Expected "first_name" in error, got: ${data.error}`);
+    });
+
+    it('PUT /api/teachers/1/profile with empty last_name → 400', async () => {
+      const { status, data } = await api('/api/teachers/1/profile', {
+        method: 'PUT',
+        headers: { Authorization: authHeader },
+        body: { first_name: 'Valid', last_name: '' }
+      });
+      assert.equal(status, 400);
+      assert.ok(data.error.toLowerCase().includes('last_name'), `Expected "last_name" in error, got: ${data.error}`);
+    });
+
+    it('PUT /api/teachers/1/profile with missing body fields → 400', async () => {
+      const { status } = await api('/api/teachers/1/profile', {
+        method: 'PUT',
+        headers: { Authorization: authHeader },
+        body: {}
+      });
+      assert.equal(status, 400);
     });
   });
 });
