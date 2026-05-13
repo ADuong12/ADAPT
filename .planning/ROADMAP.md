@@ -99,10 +99,10 @@ Plans:
 
 Plans:
 **Wave 1** *(auth shell + dashboard — required by Wave 2+)*
-- [ ] 04-01-PLAN.md — Auth shell: Vite scaffold, CSS port, useApi hook, AuthContext, ProtectedRoute, AdminRoute, AppLayout, LoginPage, SetupPasswordPage, DashboardPage
+- [x] 04-01-PLAN.md — Auth shell: Vite scaffold, CSS port, useApi hook, AuthContext, ProtectedRoute, AdminRoute, AppLayout, LoginPage, SetupPasswordPage, DashboardPage
 
 **Wave 2** *(data management pages — depends on Wave 1)*
-- [ ] 04-02-PLAN.md — Data pages: MyClassesPage, KBBrowserPage, SettingsPage, LessonLibraryPage, PrintPage, AdminDashboardPage, AdminTeachersPage, AdminClassesPage
+- [x] 04-02-PLAN.md — Data pages: MyClassesPage, KBBrowserPage, SettingsPage, LessonLibraryPage, PrintPage, AdminDashboardPage, AdminTeachersPage, AdminClassesPage
 
 **Wave 3** *(adaptation flow — depends on Wave 1)*
 - [ ] 04-03-PLAN.md — Adaptation pages: PersonalizePage (4-step stepper wizard), WorkspacePage (3-column workspace with version timeline, iframe preview, refine, feedback, diff, rollback, export)
@@ -135,5 +135,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Foundation + Auth | 3/3 | ✓ Complete | 2026-05-12 |
 | 2. Core Data API | 3/3 | ✓ Complete | 2026-05-12 |
 | 3. Adaptation Engine | 3/3 | ✓ Complete | 2026-05-13 |
-| 4. React Frontend | 0/3 | Not started | - |
+| 4. React Frontend | 2/3 | ◐ In Progress | - |
 | 5. Testing + Validation | 0/2 | Not started | - |
