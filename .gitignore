@@ -32,4 +32,10 @@ Thumbs.db
 # administrative
 planning/
 outputs/
+<<<<<<< Updated upstream
 .planning/
+=======
+wireframes/
+.planning/
+graphify-out/
+>>>>>>> Stashed changes
