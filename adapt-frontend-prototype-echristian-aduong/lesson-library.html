@@ -128,8 +128,9 @@ async function loadSourceFiles() {
 }
 
 async function downloadEditedFile(result) {
+  const token = ADAPT_API.authToken();
   const res = await fetch(ADAPT_API.url(result.download_url), {
-    headers: { "X-Teacher-Id": String(ADAPT_API.teacherId()) },
+    headers: { "Authorization": `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   const blob = await res.blob();

@@ -2,20 +2,20 @@
 // shows the logged-in teacher's name in the sidebar footer, and provides logout.
 
 (function () {
-  if (!localStorage.getItem("currentTeacherId")) {
+  if (!localStorage.getItem("authToken")) {
     if (!location.pathname.endsWith("login.html")) {
       location.href = "login.html";
       return;
     }
   }
   document.addEventListener("DOMContentLoaded", () => {
-    const role = localStorage.getItem("currentTeacherRole") || "teacher";
+    const role = localStorage.getItem("teacherRole") || "teacher";
     if (role !== "admin") {
       document.querySelectorAll('a[href^="admin-"]').forEach((a) => (a.style.display = "none"));
     }
     const sidebar = document.querySelector(".sidebar");
     if (sidebar && !sidebar.querySelector(".sidebar-footer")) {
-      const name = localStorage.getItem("currentTeacherName") || "Teacher";
+      const name = localStorage.getItem("teacherName") || "Teacher";
       const footer = document.createElement("div");
       footer.className = "sidebar-footer";
       footer.style.cssText = "margin-top:auto;padding:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text2);";
