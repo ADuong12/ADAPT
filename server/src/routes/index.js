@@ -28,8 +28,7 @@ router.use('/institutions', adminRouter);
 const adaptationsRouter = require('./adaptations');
 router.use('/', adaptationsRouter);
 
-// NOTE: Route file file-edits.js is created in Plan 03-03.
-// Route registration is deferred to that plan to avoid MODULE_NOT_FOUND on startup.
-// See Plan 03-03 Task 2 for file-edits registration.
+const fileEditsRouter = require('./file-edits');
+router.use('/', fileEditsRouter);
 
 module.exports = router;
