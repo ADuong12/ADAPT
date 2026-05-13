@@ -22,4 +22,9 @@ router.use('/clusters', clustersRouter);
 router.use('/knowledge-bases', knowledgeBasesRouter);
 router.use('/institutions', adminRouter);
 
+// NOTE: Route files (adaptations.js, file-edits.js) are created in Plans 02 and 03.
+// Route registration is deferred to those plans to avoid MODULE_NOT_FOUND on startup.
+// See Plan 03-02 Task 3 for adaptations registration.
+// See Plan 03-03 Task 2 for file-edits registration.
+
 module.exports = router;
