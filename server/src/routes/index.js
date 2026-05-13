@@ -26,7 +26,7 @@ router.use('/institutions', adminRouter);
 // If Plan 03-02 and Plan 03-03 execute in parallel, apply this registration sequentially —
 // do not overwrite the other plan's registration line.
 const adaptationsRouter = require('./adaptations');
-router.use('/api', adaptationsRouter);
+router.use('/', adaptationsRouter);
 
 // NOTE: Route file file-edits.js is created in Plan 03-03.
 // Route registration is deferred to that plan to avoid MODULE_NOT_FOUND on startup.
