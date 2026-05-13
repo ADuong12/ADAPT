@@ -36,10 +36,16 @@ async function extractDocx(filePath) {
 
 async function extractPptx(filePath) {
   return new Promise((resolve, reject) => {
-    officeparser.parseOffice(filePath, (error, text) => {
-      if (error) return reject(error);
-      resolve(text.split('\n').filter(line => line.trim()));
-    });
+    try {
+      officeparser.parseOffice(filePath, (result) => {
+        if (!result || typeof result.toText !== 'function') {
+          return reject(new Error('PPTX extraction failed'));
+        }
+        resolve(result.toText().split('\n').filter(line => line.trim()));
+      });
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
