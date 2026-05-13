@@ -17,6 +17,7 @@ export function AuthProvider({ children }) {
       teacherId: Number(localStorage.getItem('teacherId')),
       role: localStorage.getItem('teacherRole') || 'teacher',
       name: localStorage.getItem('teacherName') || 'Teacher',
+      institutionId: localStorage.getItem('institutionId') ? Number(localStorage.getItem('institutionId')) : null,
     };
   });
 
@@ -27,6 +28,7 @@ export function AuthProvider({ children }) {
 
     // Fetch full profile for name
     let userName = 'Teacher';
+    let instId = null;
     try {
       const res = await fetch('/api/auth/me', {
         headers: { 'Authorization': `Bearer ${data.accessToken}` },
@@ -34,7 +36,9 @@ export function AuthProvider({ children }) {
       if (res.ok) {
         const profile = await res.json();
         userName = `${profile.first_name} ${profile.last_name}`;
+        instId = profile.institution_id;
         localStorage.setItem('teacherName', userName);
+        if (instId) localStorage.setItem('institutionId', String(instId));
       }
     } catch {}
 
@@ -43,6 +47,7 @@ export function AuthProvider({ children }) {
       teacherId: data.user.teacher_id,
       role: data.user.role,
       name: userName,
+      institutionId: instId,
     });
   }, []);
 

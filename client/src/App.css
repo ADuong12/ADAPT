@@ -641,6 +641,10 @@ tr:hover td { background: var(--surface2); }
   margin: 0;
 }
 
+@media print {
+  .print-toolbar { display: none !important; }
+}
+
 @media (max-width: 1100px) {
   .teacher-workspace,
   .kb-workspace,
