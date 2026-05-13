@@ -1,32 +1,36 @@
-// Tiny shared fetch wrapper. Reads the current teacher id from localStorage
-// (set by login.html) and adds the X-Teacher-Id header automatically.
+// Tiny shared fetch wrapper. Reads the JWT token from localStorage
+// (set by login.html) and adds the Authorization Bearer header automatically.
 
-const DEFAULT_API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:8000" : "";
+const DEFAULT_API_BASE = window.location.protocol === "file:" ? "http://127.0.0.1:3000" : "";
 const API_BASE = (window.ADAPT_API_BASE || DEFAULT_API_BASE).replace(/\/$/, "");
 
 function apiUrl(path) {
   return `${API_BASE}${path}`;
 }
 
+function authToken() {
+  return localStorage.getItem("authToken");
+}
+
 function teacherId() {
-  const v = localStorage.getItem("currentTeacherId");
+  const v = localStorage.getItem("teacherId");
   return v ? Number(v) : null;
 }
 
 function teacherRole() {
-  return localStorage.getItem("currentTeacherRole") || "teacher";
+  return localStorage.getItem("teacherRole") || "teacher";
 }
 
 function requireLogin() {
-  if (!teacherId()) {
+  if (!authToken()) {
     window.location.href = "login.html";
   }
 }
 
 async function request(path, { method = "GET", body, headers = {} } = {}) {
-  const tid = teacherId();
+  const token = authToken();
   const finalHeaders = { "Content-Type": "application/json", ...headers };
-  if (tid) finalHeaders["X-Teacher-Id"] = String(tid);
+  if (token) finalHeaders["Authorization"] = `Bearer ${token}`;
   const res = await fetch(apiUrl(path), {
     method,
     headers: finalHeaders,
@@ -36,7 +40,7 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
     let detail = res.statusText;
     try {
       const data = await res.json();
-      detail = data.detail || detail;
+      detail = data.error || data.detail || detail;
     } catch {}
     const err = new Error(`${res.status} ${detail}`);
     err.status = res.status;
@@ -49,6 +53,7 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
 
 window.ADAPT_API = {
   url: apiUrl,
+  authToken,
   teacherId,
   teacherRole,
   requireLogin,

@@ -13,74 +13,105 @@
     <div class="logo">ADAPT</div>
     <div class="tag">AI lesson planning for K–12 CS teachers — local development build</div>
 
-    <div class="section-label">Pick a seeded teacher</div>
-    <div class="teacher-pick" id="teacher-list">
-      <div style="font-size:12px;color:var(--text3);">Loading teachers…</div>
-    </div>
-
-    <div class="section-label" style="margin-top:18px;">Or sign in with anything</div>
-    <form id="manual-form" autocomplete="off">
+    <div class="section-label">Sign in</div>
+    <form id="login-form" autocomplete="off">
       <div class="form-row">
-        <label>Email or username</label>
-        <input type="text" id="username" placeholder="anything works" required>
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required>
       </div>
       <div class="form-row">
         <label>Password</label>
-        <input type="password" id="password" placeholder="anything works" required>
+        <input type="password" id="password" placeholder="at least 8 characters" required>
       </div>
       <button class="btn-primary" type="submit" style="width:100%;">Sign in</button>
     </form>
-    <div style="font-size:11px;color:var(--text3);margin-top:14px;">
-      This is a fakeauth screen. Real auth lands in a later phase.
+    <div style="font-size:11px;color:var(--text3);margin-top:14px;text-align:center;">
+      Don't have an account? <a href="#" id="show-register" style="color:var(--accent);">Sign up</a>
+    </div>
+
+    <form id="register-form" autocomplete="off" style="display:none;">
+      <div class="form-row">
+        <label>Full name</label>
+        <input type="text" id="reg-name" placeholder="Jane Doe" required>
+      </div>
+      <div class="form-row">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="you@example.com" required>
+      </div>
+      <div class="form-row">
+        <label>Password</label>
+        <input type="password" id="reg-password" placeholder="at least 8 characters" required>
+      </div>
+      <button class="btn-primary" type="submit" style="width:100%;">Create account</button>
+    </form>
+    <div style="font-size:11px;color:var(--text3);margin-top:14px;text-align:center;display:none;" id="back-to-login-wrap">
+      Already have an account? <a href="#" id="show-login" style="color:var(--accent);">Sign in</a>
     </div>
   </div>
 </div>
 
 <script src="api.js"></script>
 <script>
-async function loadTeachers() {
-  const list = document.getElementById("teacher-list");
-  try {
-    const teachers = await ADAPT_API.get("/api/auth/teachers");
-    list.innerHTML = "";
-    teachers.forEach((t) => {
-      const div = document.createElement("div");
-      div.className = "card";
-      div.style.cursor = "pointer";
-      div.innerHTML = `
-        <div style="font-size:13px;font-weight:500;">${t.first_name} ${t.last_name}</div>
-        <div style="font-size:11px;color:var(--text2);margin:4px 0;">${t.email}</div>
-        <div style="font-size:11px;color:var(--text3);">${t.role}</div>
-      `;
-      div.addEventListener("click", () => loginAs(t));
-      list.appendChild(div);
-    });
-  } catch (e) {
-    list.innerHTML = `<div style="font-size:12px;color:#b91c1c;">Cannot reach backend: ${e.message}<br>Start it with: <code>uvicorn backend.main:app --reload</code></div>`;
-  }
-}
+const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+const showRegister = document.getElementById("show-register");
+const showLogin = document.getElementById("show-login");
+const backToLoginWrap = document.getElementById("back-to-login-wrap");
 
-function loginAs(teacher) {
-  localStorage.setItem("currentTeacherId", String(teacher.teacher_id));
-  localStorage.setItem("currentTeacherName", `${teacher.first_name} ${teacher.last_name}`);
-  localStorage.setItem("currentTeacherRole", teacher.role || "teacher");
+showRegister.addEventListener("click", (e) => {
+  e.preventDefault();
+  loginForm.style.display = "none";
+  showRegister.parentElement.style.display = "none";
+  registerForm.style.display = "block";
+  backToLoginWrap.style.display = "block";
+});
+
+showLogin.addEventListener("click", (e) => {
+  e.preventDefault();
+  registerForm.style.display = "none";
+  backToLoginWrap.style.display = "none";
+  loginForm.style.display = "block";
+  showRegister.parentElement.style.display = "block";
+});
+
+async function storeAndRedirect(result) {
+  localStorage.setItem("authToken", result.accessToken);
+  localStorage.setItem("teacherId", String(result.user.teacher_id));
+  localStorage.setItem("teacherRole", result.user.role);
+  // Fetch full profile for name
+  try {
+    const profile = await ADAPT_API.get("/api/auth/me");
+    localStorage.setItem("teacherName", `${profile.first_name} ${profile.last_name}`);
+  } catch {}
   location.href = "dashboard.html";
 }
 
-document.getElementById("manual-form").addEventListener("submit", async (e) => {
+loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    const teacher = await ADAPT_API.post("/api/auth/fake-login", {
-      username: document.getElementById("username").value,
+    const result = await ADAPT_API.post("/api/auth/login", {
+      email: document.getElementById("email").value,
       password: document.getElementById("password").value,
     });
-    loginAs(teacher);
+    storeAndRedirect(result);
   } catch (err) {
-    alert("backend not reachable: " + err.message);
+    alert("Login failed: " + err.message);
   }
 });
 
-loadTeachers();
+registerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    const result = await ADAPT_API.post("/api/auth/register", {
+      name: document.getElementById("reg-name").value,
+      email: document.getElementById("reg-email").value,
+      password: document.getElementById("reg-password").value,
+    });
+    storeAndRedirect(result);
+  } catch (err) {
+    alert("Registration failed: " + err.message);
+  }
+});
 </script>
 </body>
 </html>
