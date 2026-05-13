@@ -1,7 +1,7 @@
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
-const config = require('../src/config');
+const config = require('../../src/config');
 
 const BASE = 'http://localhost:3000';
 

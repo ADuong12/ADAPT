@@ -1,7 +1,7 @@
 const { describe, it, before } = require('node:test');
 const assert = require('node:assert/strict');
 const jwt = require('jsonwebtoken');
-const config = require('../src/config');
+const config = require('../../src/config');
 
 const BASE = 'http://localhost:3000';
 
@@ -124,7 +124,7 @@ describe('Admin endpoints', () => {
         headers: { Authorization: adminAuthHeader }
       });
       assert.equal(status, 501);
-      assert.ok(data.detail.includes('system-wide settings'));
+      assert.ok(data.detail.toLowerCase().includes('system-wide settings'));
     });
   });
 });

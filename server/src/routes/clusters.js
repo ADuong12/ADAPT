@@ -35,7 +35,7 @@ router.get('/:id/kbs', requireAuth, (req, res) => {
   }
 
   const rows = db.prepare(`
-    SELECT kb_id, kb_name, category, description, source_url
+    SELECT kb.kb_id, kb.kb_name, kb.category, kb.description, kb.source_url
     FROM knowledge_base kb
     JOIN cluster_kb ck ON kb.kb_id = ck.kb_id
     WHERE ck.cluster_id = ?
@@ -89,7 +89,7 @@ router.put('/:id/kbs', requireAuth, requireOwnerOrAdmin, (req, res) => {
 
   // Return updated KBs
   const rows = db.prepare(`
-    SELECT kb_id, kb_name, category, description, source_url
+    SELECT kb.kb_id, kb.kb_name, kb.category, kb.description, kb.source_url
     FROM knowledge_base kb
     JOIN cluster_kb ck ON kb.kb_id = ck.kb_id
     WHERE ck.cluster_id = ?
