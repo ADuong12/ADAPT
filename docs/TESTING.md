@@ -4,116 +4,175 @@
 
 ## Test Framework and Setup
 
-ADAPT uses **pytest** as its test framework with the **requests** library for HTTP-based integration testing. All tests are integration-level and require a live server running with a seeded database.
+ADAPT uses **Vitest 4.1.6** as its test framework with **supertest 7.2.2** for HTTP integration testing. All 129 tests run in-process — no separate server instance is needed.
 
-**Prerequisites:**
+**Configuration**: `server/vitest.config.js`
 
-- Python 3.10+ with project dependencies installed (`pip install -r requirements.txt`)
-- The `adapt.db` SQLite database file must exist with seeded data (from `adapt-database.sql`)
-- The uvicorn server must be running before executing tests
+- Tests are located in `server/tests/**/*.test.js`
+- Setup file: `server/tests/setup.js` (runs before each test suite)
+- `fileParallelism: false` — tests run sequentially to avoid SQLite locking issues
+- Test timeout: 10 seconds (hook timeout: 15 seconds)
 
-Install test dependencies:
+### Key configuration
 
-```bash
-pip install pytest requests
+```js
+// vitest.config.js
+{
+  include: ['tests/**/*.test.js'],
+  setupFiles: ['./tests/setup.js'],
+  fileParallelism: false,
+  clearMocks: true,
+  restoreMocks: true,
+}
 ```
-
-> **Note:** `requests` is already listed in `requirements.txt` as a project dependency. `pytest` must be installed separately for running the test suite.
 
 ## Running Tests
 
-### Start the server first
-
-All tests are integration tests that issue real HTTP requests against a running server. Start the server before running tests:
-
 ```bash
-python start_server.py
+# Run all tests
+cd server && npm test
+
+# Run with verbose output
+cd server && npx vitest run --reporter=verbose
+
+# Run with coverage
+cd server && npm run test:coverage
+
+# Watch mode
+cd server && npm run test:watch
+
+# Run a single test file
+cd server && npx vitest run tests/auth.test.js
+
+# Run a single test by name pattern
+cd server && npx vitest run -t "register"
 ```
 
-This launches uvicorn on `http://127.0.0.1:8000` in the background. You can verify it's running:
+**Prerequisites:** None beyond `npm install`. Tests run in-process against the same SQLite database used by the app. The `setup.js` file cleans test tables before each suite to ensure isolation.
 
-```bash
-python start_server.py --status
+## Test Files
+
+| File | Tests | Description |
+|------|-------|-------------|
+| `tests/auth.test.js` | — | Registration, login, refresh, logout, setup-password, /me |
+| `tests/middleware.test.js` | — | JWT requireAuth, requireRole, requireOwnerOrAdmin |
+| `tests/crypto.test.js` | — | AES-256-GCM encrypt/decrypt/redact |
+| `tests/protected-routes.test.js` | — | Endpoints requiring auth return 401 without token |
+| `tests/routes/teachers.test.js` | — | Dashboard, classes, students |
+| `tests/routes/lessons.test.js` | — | Lesson CRUD, search, source files |
+| `tests/routes/clusters.test.js` | — | Cluster listing, KB assignment |
+| `tests/routes/knowledge-bases.test.js` | — | KB listing |
+| `tests/routes/settings.test.js` | — | LLM config CRUD, encryption, redaction |
+| `tests/routes/admin.test.js` | — | Admin overview, teachers, classes, clusters |
+| `tests/routes/adaptations.test.js` | — | Generate, refine, rollback, feedback, versions, print |
+| `tests/routes/file-edits.test.js` | — | Source file AI editing |
+
+## Test Helpers
+
+`server/tests/helpers.js` provides utilities for authentication in tests:
+
+```js
+import { generateToken, teacherToken, adminToken, wrongTeacherToken, authHeader } from './helpers';
+
+// Generate a JWT for any user
+const token = generateToken({ teacher_id: 5, role: 'teacher', institution_id: 2 });
+
+// Pre-made tokens
+const teacherAuth = authHeader(teacherToken());   // teacher_id=1, role=teacher
+const adminAuth = authHeader(adminToken());        // teacher_id=4, role=admin
+const crossTeacherAuth = authHeader(wrongTeacherToken()); // teacher_id=2, role=teacher
 ```
 
-Stop the server after testing:
+### Test Authentication
 
-```bash
-python start_server.py --stop
-```
+Tests use real JWT tokens created by `helpers.js`:
 
-### Run the full test suite
+- **Regular teacher**: `teacher_id=1` (Maria Hernandez), `role=teacher`
+- **Admin teacher**: `teacher_id=4` (Robert Chen), `role=admin`
+- **Cross-teacher**: `teacher_id=2` (different teacher), for authorization boundary tests
+- Omitting the `Authorization` header triggers `401 Unauthorized` responses
+- Using the wrong teacher triggers `403 Forbidden` on owner-only resources
 
-```bash
-pytest
-```
+### Setup and Teardown
 
-### Run with verbose output
+`server/tests/setup.js`:
 
-```bash
-pytest tests/test_api.py -v
-```
-
-### Run a single test class
-
-```bash
-pytest tests/test_api.py::TestLessons -v
-```
-
-### Run a single test
-
-```bash
-pytest tests/test_api.py::TestLessons::test_get_lesson -v
-```
-
-> **Important:** If the server is not running, the `live_server` session-scoped fixture will fail immediately with a clear error message, preventing false negatives from connection issues.
+- Exports `TEST_USER` object for reference
+- Exports `MOCK_LLM_RESPONSE` for mocking LLM calls in adaptation tests
+- Exports `MOCK_EMBEDDING` for mocking embedding vectors
+- Exports `cleanTestTables()` which clears test data from: `adapted_lesson`, `lesson_plan_version`, `lesson_kb_used`, `adaptation_feedback`, `rag_context_log`, `refresh_token`, and test-created teachers
+- Called in `beforeEach` or `beforeAll` hooks as needed
 
 ## Writing New Tests
 
-### File and class conventions
+### File and naming conventions
 
-- Test files live in `tests/` and follow the naming pattern `test_*.py`
-- Group related endpoint tests into classes (e.g., `TestLessons`, `TestAuth`, `TestAdmin`)
-- Each test method name should clearly describe what is being tested (e.g., `test_list_lessons_requires_auth`)
+- Test files go in `server/tests/` (root) or `server/tests/routes/` (route integration tests)
+- Follow the naming pattern `*.test.js`
+- Group related tests with `describe()` blocks
+- Each `test()` or `it()` name should clearly describe what is being tested
 
-### Available fixtures
+### Example: Route integration test
 
-The shared fixtures are defined in `tests/conftest.py`:
+```js
+import request from 'supertest';
+import app from '../src/app';
+import { teacherToken, authHeader } from './helpers';
 
-| Fixture | Scope | Description |
-|---|---|---|
-| `base_url` | session | Returns `"http://127.0.0.1:8000"` — the server base URL |
-| `h` | function | Teacher auth headers: `{"X-Teacher-Id": "1"}` (Maria Hernandez) |
-| `admin_h` | function | Admin auth headers: `{"X-Teacher-Id": "4"}` (Robert Chen) |
-| `live_server` | session | Health-checks the server at `/api/health`; fails the session if unreachable |
+describe('GET /api/lessons', () => {
+  test('returns all lessons for authenticated user', async () => {
+    const res = await request(app)
+      .get('/api/lessons')
+      .set(authHeader(teacherToken()));
+    
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
 
-### Helper function
-
-`test_api.py` provides an `api()` helper for making requests:
-
-```python
-def api(base_url: str, path: str, headers: dict | None = None,
-        method: str = "GET", body: dict | None = None):
+  test('returns 401 without auth', async () => {
+    const res = await request(app).get('/api/lessons');
+    expect(res.status).toBe(401);
+  });
+});
 ```
 
-### Authentication
+### Example: Unit test
 
-Tests use a simplified fake-auth mechanism via the `X-Teacher-Id` header:
+```js
+import { encrypt, decrypt, redact } from '../src/services/crypto';
 
-- **Regular teacher:** `X-Teacher-Id: 1` (Maria Hernandez) — used via the `h` fixture
-- **Admin teacher:** `X-Teacher-Id: 4` (Robert Chen) — used via the `admin_h` fixture
-- Omitting the header triggers `401 Unauthorized` responses on protected endpoints
-- Using the wrong teacher ID triggers `403 Forbidden` on cross-teacher resources
+describe('crypto', () => {
+  test('encrypt then decrypt returns original', () => {
+    const original = 'my-secret-api-key';
+    const encrypted = encrypt(original);
+    expect(decrypt(encrypted)).toBe(original);
+  });
 
-### Example test
+  test('redact shows first 3 and last 4 chars', () => {
+    expect(redact('sk-1234567890abcdef')).toBe('sk-\u2026cdef');
+  });
+});
+```
 
-```python
-class TestMyFeature:
-    def test_something(self, base_url, live_server, h):
-        r = api(base_url, "/api/my-endpoint", headers=h)
-        assert r.status_code == 200
-        data = r.json()
-        assert "expected_key" in data
+### Mocking external services
+
+For tests that hit LLM or RAG endpoints, mock the external calls:
+
+```js
+import { vi } from 'vitest';
+
+// Mock OpenRouter LLM service
+vi.mock('../src/services/llm/openrouter', () => ({
+  OpenRouterProvider: vi.fn().mockImplementation(() => ({
+    generate: vi.fn().mockResolvedValue({
+      text: JSON.stringify({ recommendations: [], plan_steps: [], companion_materials: [] }),
+      model: 'test-model',
+      provider: 'openrouter',
+      tokenCount: 100,
+    }),
+    ping: vi.fn().mockResolvedValue([true, null]),
+  })),
+}));
 ```
 
 ### Test data
@@ -121,48 +180,23 @@ class TestMyFeature:
 The database is seeded from `adapt-database.sql` with:
 
 - 3 institutions
-- 4 teachers (IDs 1–4, with ID 4 as admin)
+- 4 teachers (IDs 1-4, with ID 4 as admin, password `admin123`)
 - 7 clusters
 - 12 students
 - 3 lessons
 - 4 adapted lessons
 - 16 knowledge bases
 
-Tests should reference specific IDs only when testing ownership/authorization boundaries (e.g., teacher 1 cannot access teacher 2's adaptations). For existence-based assertions, use `>=` checks rather than exact counts to remain resilient to seed changes.
+Tests should reference specific IDs only when testing ownership/authorization boundaries. For existence-based assertions, use `>=` checks rather than exact counts to remain resilient to seed changes.
 
-## Coverage Requirements
-
-No coverage threshold is configured. There is no `pytest.ini`, `pyproject.toml`, or `setup.cfg` defining coverage settings for this project.
-
-To run tests with coverage (optional):
+## Coverage
 
 ```bash
-pip install pytest-cov
-pytest --cov=backend tests/
+cd server && npm run test:coverage
 ```
+
+This generates a V8 coverage report. No coverage threshold is currently enforced.
 
 ## CI Integration
 
-No CI pipeline is configured. There are no `.github/workflows/` files or other CI configuration files in the repository. Tests must be run manually before merging changes.
-
-## Manual Testing
-
-A step-by-step manual browser walkthrough is available at `tests/manual-walkthrough.md`. It covers:
-
-1. **Login** — Selecting a seeded teacher at `http://localhost:8000/app/login.html`
-2. **Dashboard** — Verifying metrics, recent adaptations, and sidebar navigation
-3. **My Classes** — Viewing student rosters and cluster assignments
-4. **Lesson Library** — Browsing seeded lessons and source files
-5. **Knowledge Bases** — Browsing KB entries
-6. **Lesson Planning** — Creating a new adaptation via the multi-step wizard
-7. **Adaptation Results** — Reviewing, printing, exporting, and providing feedback
-8. **Settings** — Configuring LLM provider, model, and API key
-9. **Admin Panel** — Viewing institution-wide overview (admin teachers only)
-
-To use the manual walkthrough:
-
-```bash
-python start_server.py
-# Open http://localhost:8000/app/login.html in a browser
-# Follow steps in tests/manual-walkthrough.md
-```
+No CI pipeline is configured. Tests must be run manually (`cd server && npm test`) before merging changes.

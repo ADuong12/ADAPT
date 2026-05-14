@@ -2,124 +2,129 @@
 
 # Configuration
 
-ADAPT uses environment variables for secrets and API keys, and file-based paths for local storage. All configuration is centralized in `backend/config.py`, which loads values from `.env` and `keys.env` files.
+ADAPT uses environment variables for secrets and runtime settings, loaded via `dotenv` from a `.env` file in the `server/` directory. All configuration is centralized in `server/src/config/index.js`.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ADAPT_SECRET_KEY` | No | Auto-generated | Fernet encryption key for encrypting LLM API keys at rest. If left empty, a key is auto-generated on first run and persisted to `.secret_key`. Generate manually with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `ADAPT_GEMINI_API_KEY` | No | *(empty)* | Fallback Gemini API key for solo-teacher local installs. If set, the teacher can skip the Settings screen entirely. |
-| `ADAPT_EMBEDDING_MODEL` | No | `all-MiniLM-L6-v2` | Sentence-transformers model used for knowledge-base chunk embeddings. The default model is fast, free, and ~80 MB. |
+| `JWT_SECRET` | Yes* | `dev-secret-change-in-production` | Secret for signing JWT access tokens. Must be changed in production. |
+| `ENCRYPTION_KEY` | Yes* | *(empty)* | 64-char hex string for AES-256-GCM encryption of stored LLM API keys. Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `OPENROUTER_API_KEY` | No | — | Fallback OpenRouter API key used when a teacher has no personal LLM config. |
+| `PORT` | No | `3000` | HTTP server port. |
+| `NODE_ENV` | No | `development` | Environment mode (`development` or `production`). |
+| `CORS_ORIGINS` | No | `http://localhost:3000` | Comma-separated allowed CORS origins. In development mode, `null` origin is implicitly allowed (for local file access). |
 
-## File-Based Configuration
+*Required for production. Dev defaults work for local development.
 
-The `Settings` class in `backend/config.py` defines paths and runtime defaults that do not require environment variables:
+### RAG Pipeline Variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `CHROMA_URL` | No | `http://localhost:8000` | ChromaDB server URL for vector storage. |
+| `EMBED_SERVER_URL` | No | `http://127.0.0.1:9876/embed` | Python embedding server URL for sentence-transformers. |
+
+## Configuration Loading
+
+`server/src/config/index.js` loads environment variables on startup:
+
+```js
+require('dotenv').config({ path: require('path').resolve(__dirname, '..', '..', '.env') });
+```
+
+The `.env` file is resolved relative to `server/src/config/`, pointing to `server/.env`. Copy `.env.example` to `.env` and fill in the values:
+
+```bash
+cd server
+cp .env.example .env
+# Edit .env — set JWT_SECRET, ENCRYPTION_KEY, and optionally OPENROUTER_API_KEY
+```
+
+## File-Based Paths
 
 | Setting | Value | Description |
 |---|---|---|
-| `db_path` | `<ROOT>/adapt.db` | SQLite database file path |
-| `chroma_path` | `<ROOT>/chroma_data` | ChromaDB persistent storage directory (auto-created) |
-| `knowledge_bases_dir` | `<ROOT>/Knowledge Bases` | Source documents for knowledge bases |
-| `sample_lessons_dir` | `<ROOT>/Sample Lessons` | Lesson template source files |
-| `uploads_dir` | `<ROOT>/uploads` | Uploaded file storage (auto-created) |
-| `default_models` | *(see below)* | Per-provider default LLM model names |
-| `cors_origins` | `["*"]` | Allowed CORS origins |
+| Database | `<ROOT>/adapt-database.sql` | SQLite DDL + seed data (loaded by `db/init.js`) |
+| Database path | In-memory via `better-sqlite3` | SQLite runs embedded, no separate file path needed in config |
+| Knowledge Bases | `<ROOT>/Knowledge Bases/` | Source documents for RAG ingestion |
+| Sample Lessons | `<ROOT>/Sample Lessons/` | Lesson template source files |
+| Templates | `server/src/templates/` | EJS template for lesson plan rendering |
 
-`<ROOT>` refers to the project root directory (one level above `backend/`).
-
-### Default LLM Models
-
-| Provider | Default Model |
-|---|---|
-| `gemini` | `gemini-2.5-flash` |
-| `openrouter` | `meta-llama/llama-3.1-8b-instruct:free` |
-| `huggingface` | `meta-llama/Llama-3.1-8B-Instruct` |
-
-## Required vs Optional Settings
-
-The only truly **required** value for the application to start is the encryption key. However, ADAPT handles this automatically:
-
-- **`ADAPT_SECRET_KEY`** — If not provided, a Fernet key is generated on first run and stored in `.secret_key` at the project root. No manual action needed unless you want to use a specific key.
-
-All other environment variables are **optional**:
-
-- **`ADAPT_GEMINI_API_KEY`** — Without this, teachers must configure their own API key through the Settings UI on first login.
-- **`ADAPT_EMBEDDING_MODEL`** — Falls back to `all-MiniLM-L6-v2` if not set.
-
-## Defaults
-
-| Setting | Default | Source |
-|---|---|---|
-| Encryption key | Auto-generated Fernet key | `backend/security.py` — `_load_or_generate_key()` |
-| Embedding model | `all-MiniLM-L6-v2` | `ADAPT_EMBEDDING_MODEL` env var / `config.py` |
-| Gemini fallback key | *(empty)* | `ADAPT_GEMINI_API_KEY` env var / `config.py` |
-| CORS origins | `["*"]` (allow all) | `config.py` |
-| Upload directory | `<ROOT>/uploads` | `config.py` — auto-created on startup |
-| ChromaDB directory | `<ROOT>/chroma_data` | `config.py` — auto-created on startup |
-
-## Per-Environment Overrides
-
-ADAPT loads environment files in this order (later files override earlier ones):
-
-1. **`.env`** — Primary environment file (copy from `.env.example`)
-2. **`keys.env`** — Local secrets file that overrides `.env` (copy from `keys.env.example`)
-
-This two-file approach lets you keep general config in `.env` while isolating API keys in `keys.env`, which is particularly useful for shared development environments.
-
-To set up:
-
-```bash
-# Copy the template files
-cp .env.example .env
-cp keys.env.example keys.env
-
-# Edit .env with your configuration
-# Edit keys.env with your secret values (never commit this file)
-```
-
-Both `.env` and `keys.env` are listed in `.gitignore` and will not be committed to version control.
+`<ROOT>` refers to the project root (three levels above `server/src/config/`).
 
 ## LLM Provider Configuration
 
-LLM providers are configured **per-teacher** through the application's Settings UI, not through environment variables. The configuration is stored in the `llm_provider_config` database table with these fields:
+LLM providers are configured **per-teacher** through the Settings UI or the API (`PUT /api/teachers/:id/llm-config`). The configuration is stored in the `llm_provider_config` database table:
 
 | Field | Type | Description |
 |---|---|---|
-| `provider` | string | One of: `gemini`, `openrouter`, `huggingface` |
-| `model` | string (nullable) | Model identifier; falls back to `default_models` if omitted |
-| `api_key_encrypted` | text | Fernet-encrypted API key stored at rest |
+| `provider` | string | Currently only `openrouter` is supported |
+| `model` | string (nullable) | Model identifier (e.g., `meta-llama/llama-3.1-8b-instruct:free`) |
+| `api_key_encrypted` | text | AES-256-GCM encrypted API key stored at rest |
 | `is_active` | integer | Only one provider can be active per teacher at a time |
 
-### API Endpoints
+### Fallback Behavior
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/teachers/{id}/llm-config` | Retrieve the teacher's active LLM config (API key is redacted) |
-| `PUT` | `/api/teachers/{id}/llm-config` | Set or update provider, model, and API key |
-| `POST` | `/api/teachers/{id}/llm-config/test` | Test the active provider connection |
+When a teacher has no active `llm_provider_config`, the system falls back to the `OPENROUTER_API_KEY` environment variable. If neither is available, adaptation requests return a `400` error.
 
-When a teacher sets a new active provider, all other providers for that teacher are automatically deactivated.
+### API Key Encryption
 
-## Security
+Teacher LLM API keys are encrypted at rest using AES-256-GCM:
 
-- **Encryption at rest**: LLM API keys are encrypted using Fernet (symmetric encryption) before being stored in the database. The encryption key is loaded from `ADAPT_SECRET_KEY` or auto-generated on first run and persisted to `.secret_key`.
-- **Key file permissions**: On first-run key generation, `.secret_key` is set to mode `0o600` (owner read/write only) where the OS supports it.
-- **API key redaction**: When returning API keys through the API, they are redacted to show only the first 3 and last 4 characters (e.g., `AIz…9fKx`). Short keys are fully masked.
-- **Decryption failure**: If a stored key becomes unreadable (e.g., the Fernet key changes), the system raises a `ValueError` with the message "stored API key is unreadable; please re-enter it".
+- **Algorithm**: `aes-256-gcm` with 12-byte IV and 16-byte auth tag
+- **Storage format**: `iv:authTag:ciphertext` (base64-encoded segments)
+- **Key source**: `ENCRYPTION_KEY` environment variable (64-char hex = 256 bits)
+- **Redaction**: API keys returned by the API show only first 3 and last 4 characters (e.g., `sk-…9fKx`). Short keys are fully masked.
+
+See `server/src/services/crypto.js` for implementation details.
+
+## CORS Configuration
+
+CORS origins are configured via `CORS_ORIGINS`:
+
+```js
+// server/src/config/index.js
+corsOrigins: process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').concat(process.env.NODE_ENV === 'development' ? ['null'] : [])
+  : ['http://localhost:3000']
+```
+
+In development mode, the `null` origin is implicitly appended to allow local file:// access. For production, list all allowed origins separated by commas (e.g., `https://adapt.example.com,https://admin.adapt.example.com`).
+
+## Database
+
+SQLite via `better-sqlite3` provides all persistence. The database is initialized on server startup by `server/src/db/init.js`:
+
+1. Reads and executes `adapt-database.sql` from the project root (idempotent — uses `IF NOT EXISTS`)
+2. Adds `password_hash` column to `teacher` table (idempotent — catches duplicate column error)
+3. Creates `refresh_token` table and indexes (idempotent)
+
+The admin user (Robert Chen, `teacher_id=4`) receives a default password hash via `server/src/db/seed.js`.
 
 ## Files Excluded from Version Control
 
-The following configuration and data files are listed in `.gitignore` and must not be committed:
+The following files and directories are in `.gitignore` and must not be committed:
 
 | File / Directory | Purpose |
 |---|---|
-| `.env` | Primary environment variables |
-| `keys.env` | Local secret overrides |
-| `.secret_key` | Auto-generated Fernet encryption key |
-| `adapt.db` | SQLite database |
-| `chroma_data/` | ChromaDB vector store |
+| `server/.env` | Environment variables (secrets) |
+| `server/.secret_key` | Auto-generated encryption key (Not currently used — ENCRYPTION_KEY is in .env) |
+| `node_modules/` | Installed dependencies |
+| `chroma_data/` | ChromaDB vector store data |
 | `uploads/` | User-uploaded files |
-| `.server_pid` | Server process ID file |
-| `server_stdout.log` | Server standard output log |
-| `server_stderr.log` | Server error log |
+
+## Environment-Specific Notes
+
+### Development
+
+- `JWT_SECRET` defaults to `dev-secret-change-in-production` — acceptable for local use only
+- `CORS_ORIGINS` includes `null` origin for local file:// access
+- SQLite database is created from `adapt-database.sql` on first startup
+
+### Production
+
+- `JWT_SECRET` **must** be set to a cryptographically random string
+- `ENCRYPTION_KEY` **must** be set to a 64-char hex string
+- `OPENROUTER_API_KEY` should be set if no per-teacher configs will be used
+- `CORS_ORIGINS` should list only trusted domains
+- `NODE_ENV=production` should be set

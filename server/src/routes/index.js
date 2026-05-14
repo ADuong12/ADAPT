@@ -22,4 +22,13 @@ router.use('/clusters', clustersRouter);
 router.use('/knowledge-bases', knowledgeBasesRouter);
 router.use('/institutions', adminRouter);
 
+// NOTE: This route registration modifies server/src/routes/index.js.
+// If Plan 03-02 and Plan 03-03 execute in parallel, apply this registration sequentially —
+// do not overwrite the other plan's registration line.
+const adaptationsRouter = require('./adaptations');
+router.use('/', adaptationsRouter);
+
+const fileEditsRouter = require('./file-edits');
+router.use('/', fileEditsRouter);
+
 module.exports = router;

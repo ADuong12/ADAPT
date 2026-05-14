@@ -6,143 +6,160 @@ This guide walks you through installing, configuring, and running ADAPT locally 
 
 ## Prerequisites
 
-Before you begin, make sure you have the following installed:
-
-- **Python 3.10+** — Required runtime (`python --version` to verify)
-- **pip** — Python package manager (included with most Python distributions)
+- **Node.js 18+** — Required runtime for the Express server (`node --version` to verify)
+- **npm 9+** — Package manager (bundled with Node.js)
+- **Python 3.10+** — Required for the RAG embedding server (optional if not using RAG features)
 - **Git** — For cloning the repository
-- **An LLM API key** — At least one of:
-  - Google Gemini API key
-  - OpenRouter API key
-  - HuggingFace API token
+- **An OpenRouter API key** — For LLM-powered lesson adaptation (or configure per-teacher keys in the UI)
 
 ## Installation Steps
 
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/your-org/ADAPT.git
 cd ADAPT
 ```
 
-### 2. Install Python dependencies
+### 2. Install server dependencies
 
 ```bash
-pip install -r requirements.txt
+cd server
+npm install
 ```
 
-This installs all required packages including FastAPI, Uvicorn, SQLAlchemy, ChromaDB, sentence-transformers, cryptography, google-generativeai, and others.
+This installs Express 5, better-sqlite3, bcryptjs, jsonwebtoken, Vitest, and all other dependencies.
 
-### 3. Configure environment variables
+### 3. Install client dependencies
 
 ```bash
+cd ../client
+npm install
+```
+
+This installs React 19, React Router v7, Vite, and related dev dependencies.
+
+### 4. Configure environment variables
+
+```bash
+cd ../server
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the values:
+Edit `server/.env` and fill in the values:
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `ADAPT_SECRET_KEY` | Optional | Auto-generated | Fernet key for encrypting LLM API keys at rest. Leave empty to auto-generate on first run. |
-| `ADAPT_GEMINI_API_KEY` | Optional | — | Fallback Gemini key for solo-teacher local installs. If set, you can skip the Settings screen. |
-| `ADAPT_EMBEDDING_MODEL` | Optional | `all-MiniLM-L6-v2` | Sentence-transformers model used for knowledge base chunk embeddings. |
+| Variable | Required | Description |
+|---|---|---|
+| `JWT_SECRET` | Yes (prod) | Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `ENCRYPTION_KEY` | Yes (prod) | 64-char hex string for AES-256-GCM. Generate same way as `JWT_SECRET`. |
+| `OPENROUTER_API_KEY` | No | Fallback OpenRouter key. Teachers can also configure their own via Settings UI. |
+| `PORT` | No | Defaults to `3000`. |
+| `CORS_ORIGINS` | No | Defaults to `http://localhost:3000,http://localhost:5173`. |
 
-### 4. (Optional) Set up local secrets file
-
-```bash
-cp keys.env.example keys.env
-```
-
-Fill in real API key values in `keys.env`. This file should never be committed to version control.
+The dev default `JWT_SECRET` (`dev-secret-change-in-production`) works for local development.
 
 ### 5. Initialize the database
 
-```bash
-python scripts/migrate.py
-```
+The SQLite database is initialized automatically when the server starts. `server/src/db/init.js` reads `adapt-database.sql` from the project root and creates all tables with seed data. No manual migration step is needed.
 
-This reads `adapt-database.sql` and creates the SQLite database (`adapt.db`) with all required tables and indexes. The script is idempotent — every statement uses `IF NOT EXISTS`, so it is safe to re-run when the schema changes.
+The admin user (Robert Chen) receives a default password (`admin123`) via the seed step.
 
-### 6. (Optional) Seed demo data
+### 6. (Optional) Set up the RAG pipeline
 
-```bash
-python scripts/seed_versions.py
-```
-
-Creates initial lesson plan version rows from the sample adapted lessons. This is only needed if you want pre-populated demo data.
-
-### 7. (Optional) Ingest Knowledge Base documents
+If you want to use knowledge base retrieval features:
 
 ```bash
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Start the ChromaDB server
+chroma run --path ./chroma_data --port 8000
+
+# Start the embedding server
+python server/src/services/rag/embed_server.py
+
+# Ingest knowledge base documents
 python scripts/ingest_kbs.py
 ```
 
-Ingests files from the `Knowledge Bases/` directory into ChromaDB. You can also target a single knowledge base:
-
-```bash
-python scripts/ingest_kbs.py --kb-id 4
-```
+The RAG pipeline is optional — lesson adaptation works without it (just without KB-retrieved context).
 
 ## First Run
 
-Start the ADAPT server:
+### Start the backend
 
 ```bash
-python start_server.py
+cd server
+npm run dev
 ```
 
-On success you will see:
+This starts the Express server with nodemon hot reload on `http://localhost:3000`.
 
+Or for production mode:
+
+```bash
+cd server
+npm start
 ```
-Server started (PID <pid>): http://localhost:8000
-Frontend: http://localhost:8000/app/login.html
-API docs: http://localhost:8000/docs
+
+### Start the frontend
+
+In a separate terminal:
+
+```bash
+cd client
+npm run dev
 ```
 
-### Server management commands
-
-| Command | Description |
-|---|---|
-| `python start_server.py` | Start the server in the background |
-| `python start_server.py --status` | Check if the server is running and view health status |
-| `python start_server.py --stop` | Stop the running server |
+The React app starts on `http://localhost:5173` and proxies API requests to the backend.
 
 ### First-time setup in the UI
 
-1. Open **http://localhost:8000/app/login.html** in your browser.
-2. Select a teacher from the login page (the MVP uses a fakeauth picker).
+1. Open **http://localhost:5173** in your browser.
+2. Register a new account or log in with the seeded admin user:
+   - Email: `robert.chen@westfield.edu`
+   - Password: `admin123`
 3. Go to **Settings** and configure your LLM provider:
-   - Choose a provider (Gemini, OpenRouter, or HuggingFace).
-   - Enter your API key.
-   - Click **Test Connection** to verify it works.
+   - Enter your OpenRouter API key
+   - Optionally specify a model (defaults to `meta-llama/llama-3.1-8b-instruct:free`)
 4. Go to **Lesson Library** and pick a lesson.
 5. Go to **Personalize**, select a student cluster, and click **Generate** to create an adapted lesson plan.
 
 ## Common Setup Issues
 
+### "ENCRYPTION_KEY not set" error
+
+This error occurs when trying to save an LLM API key without the encryption key configured. Generate one:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Add the output to `server/.env` as `ENCRYPTION_KEY=<your-key>`.
+
 ### "No LLM configured" error
 
-If you see this error in the UI, it means no LLM provider and API key have been set. Either:
+Either:
+- Set `OPENROUTER_API_KEY` in `server/.env` as a fallback, **or**
+- Configure an API key in the **Settings** page of the UI.
 
-- Set `ADAPT_GEMINI_API_KEY` in your `.env` file as a fallback, **or**
-- Configure a provider and API key in the **Settings** page of the UI.
+### Port already in use
 
-### Health check fails after starting the server
+If port 3000 or 5173 is already in use:
+- Change `PORT` in `server/.env` for the backend
+- The Vite dev server will proxy API requests to the backend port automatically
 
-The health endpoint (`/api/health`) is polled automatically after startup. If it fails:
+### ChromaDB connection errors
 
-- Check `server_stderr.log` in the project root for error messages.
-- Ensure port 8000 is not already in use by another process.
-- Verify that all dependencies installed correctly (`pip install -r requirements.txt`).
-
-### ChromaDB errors
-
-If you encounter ChromaDB-related errors:
-
-- Ensure the `chroma_data/` directory exists and is writable.
-- Re-run `python scripts/ingest_kbs.py` to repopulate the vector store.
+If using RAG features and seeing connection errors:
+- Ensure ChromaDB is running: `chroma run --path ./chroma_data --port 8000`
+- Ensure the embedding server is running: `python server/src/services/rag/embed_server.py`
+- Re-ingest KB documents: `python scripts/ingest_kbs.py`
 
 ## Next Steps
 
 - **[Architecture](ARCHITECTURE.md)** — Understand the system design and component layout.
 - **[Configuration](CONFIGURATION.md)** — Full reference for all environment variables and config options.
+- **[Development](DEVELOPMENT.md)** — Setting up a dev environment, code style, and adding features.
+- **[Testing](TESTING.md)** — Running and writing tests.
+- **[API Reference](API.md)** — Complete endpoint documentation.
