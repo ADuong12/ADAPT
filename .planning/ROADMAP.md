@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Core Data API** - All CRUD endpoints ported with JWT auth enforcement (lessons, clusters, KBs, teachers, admin, settings)
 - [x] **Phase 3: Adaptation Engine** - RAG pipeline, OpenRouter LLM, lesson adaptation+versioning, source file editing (DOCX/PPTX/PDF)
 - [x] **Phase 4: React Frontend** - Full React SPA with all 12 pages: auth, dashboard, workspace, settings, classes, library, print/export
-- [ ] **Phase 5: Testing + Validation** - Automated test suite covering auth, all endpoints, RAG pipeline, and RBAC
+- [x] **Phase 5: Testing + Validation** - Automated test suite covering auth, all endpoints, RAG pipeline, and RBAC
 
 ## Phase Details
 
@@ -123,10 +123,10 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 05-01-PLAN.md — Vitest setup + helpers, migrate 10 existing test files to Vitest/supertest, auth flow + CRUD endpoint tests (TEST-01, TEST-02, TEST-04)
+- [x] 05-01-PLAN.md — Vitest setup + helpers, migrate 10 existing test files to Vitest/supertest, auth flow + CRUD endpoint tests (TEST-01, TEST-02, TEST-04)
 
 **Wave 2** *(blocked on Wave 1 — depends on test infrastructure from 05-01)*
-- [ ] 05-02-PLAN.md — Adaptation endpoint tests with service mocking, file-edit endpoint tests, error-handling edge cases (TEST-03, TEST-04)
+- [x] 05-02-PLAN.md — Adaptation endpoint tests with service mocking, file-edit endpoint tests, error-handling edge cases (TEST-03, TEST-04)
 
 ## Progress
 
@@ -139,4 +139,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Core Data API | 3/3 | ✓ Complete | 2026-05-12 |
 | 3. Adaptation Engine | 3/3 | ✓ Complete | 2026-05-13 |
 | 4. React Frontend | 3/3 | ✓ Complete | 2026-05-14 |
-| 5. Testing + Validation | 0/2 | Not started | - |
+| 5. Testing + Validation | 2/2 | ✓ Complete | 2026-05-14 |
