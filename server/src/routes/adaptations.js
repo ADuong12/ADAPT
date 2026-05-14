@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const requireAuth = require('../middleware/auth');
-const { generate, refine } = require('../services/adaptation');
-const { headVersion, listVersions, rollbackTo, parsePlanJson } = require('../services/versioning');
+const adaptationService = require('../services/adaptation');
+const versioningService = require('../services/versioning');
 const db = require('../db');
 
 function requireAdaptationOwner(req, res, next) {
@@ -31,9 +31,9 @@ function versionSummary(v) {
 }
 
 function adaptationOut(adaptedId) {
-  const head = headVersion(adaptedId);
+  const head = versioningService.headVersion(adaptedId);
   if (!head) return { error: 'no versions for this adaptation' };
-  const versions = listVersions(adaptedId);
+  const versions = versioningService.listVersions(adaptedId);
   const adapted = db.prepare("SELECT * FROM adapted_lesson WHERE adapted_id = ?").get(adaptedId);
   return {
     adapted_id: adapted.adapted_id,
@@ -50,7 +50,7 @@ router.post('/adapt', requireAuth, async (req, res) => {
   const { lesson_id, cluster_id, kb_ids, include_student_context } = req.body;
   if (!lesson_id || !cluster_id) return res.status(400).json({ error: 'lesson_id and cluster_id required' });
   try {
-    const result = await generate({
+    const result = await adaptationService.generate({
       teacherId: req.user.teacher_id,
       lessonId: lesson_id,
       clusterId: cluster_id,
@@ -71,7 +71,7 @@ router.post('/adaptations/:adapted_id/refine', requireAuth, requireAdaptationOwn
   const { instruction } = req.body;
   if (!instruction) return res.status(400).json({ error: 'instruction required' });
   try {
-    await refine({
+    await adaptationService.refine({
       teacherId: req.user.teacher_id,
       adaptedId: parseInt(req.params.adapted_id),
       instruction,
@@ -93,7 +93,7 @@ router.get('/adaptations/:adapted_id', requireAuth, requireAdaptationOwner, (req
 
 // GET /api/adaptations/:adapted_id/versions — List all versions
 router.get('/adaptations/:adapted_id/versions', requireAuth, requireAdaptationOwner, (req, res) => {
-  const versions = listVersions(parseInt(req.params.adapted_id));
+  const versions = versioningService.listVersions(parseInt(req.params.adapted_id));
   res.json(versions.map(versionSummary));
 });
 
@@ -106,7 +106,7 @@ router.get('/adaptations/:adapted_id/versions/:version_id', requireAuth, require
   res.json({
     ...versionSummary(v),
     rendered_html: v.rendered_html,
-    plan_json: parsePlanJson(v),
+    plan_json: versioningService.parsePlanJson(v),
   });
 });
 
@@ -115,7 +115,7 @@ router.post('/adaptations/:adapted_id/rollback', requireAuth, requireAdaptationO
   const { version_id } = req.body;
   if (!version_id) return res.status(400).json({ error: 'version_id required' });
   try {
-    rollbackTo(parseInt(req.params.adapted_id), version_id);
+    versioningService.rollbackTo(parseInt(req.params.adapted_id), version_id);
     res.json(adaptationOut(parseInt(req.params.adapted_id)));
   } catch (e) {
     if (e.message.includes('not found')) return res.status(404).json({ error: e.message });

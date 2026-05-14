@@ -3,7 +3,7 @@ const router = express.Router();
 const path = require('path');
 const fs = require('fs');
 const requireAuth = require('../middleware/auth');
-const { editSourceFile, editedFilePath, sourceFilesForLesson } = require('../services/source-editor');
+const sourceEditorService = require('../services/source-editor');
 const db = require('../db');
 
 // POST /api/file-edits — Request AI edit on a source file
@@ -13,7 +13,7 @@ router.post('/file-edits', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'lesson_id, source_path, and instruction required' });
   }
   try {
-    const result = await editSourceFile({
+    const result = await sourceEditorService.editSourceFile({
       teacherId: req.user.teacher_id,
       lessonId: lesson_id,
       sourcePath: source_path,
@@ -36,7 +36,7 @@ router.post('/file-edits', requireAuth, async (req, res) => {
 // GET /api/lesson-file-edits/:filename — Download edited file
 router.get('/lesson-file-edits/:filename', requireAuth, (req, res) => {
   try {
-    const filePath = editedFilePath(req.params.filename);
+    const filePath = sourceEditorService.editedFilePath(req.params.filename);
     res.sendFile(filePath);
   } catch (e) {
     if (e.message.includes('not found') || e.message.includes('invalid')) {
@@ -50,7 +50,7 @@ router.get('/lesson-file-edits/:filename', requireAuth, (req, res) => {
 router.get('/file-edits/lessons/:lesson_id/sources', requireAuth, (req, res) => {
   const lesson = db.prepare("SELECT * FROM lesson WHERE lesson_id = ?").get(parseInt(req.params.lesson_id));
   if (!lesson) return res.status(404).json({ error: 'lesson not found' });
-  const files = sourceFilesForLesson(lesson);
+  const files = sourceEditorService.sourceFilesForLesson(lesson);
   res.json(files);
 });
 
