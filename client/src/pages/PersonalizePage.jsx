@@ -69,8 +69,8 @@ export default function PersonalizePage() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/api/lessons?page=1&limit=100'),
-      api.get('/api/clusters'),
+      api.get('/lessons?page=1&limit=100'),
+      api.get('/clusters'),
     ])
       .then(([lessonsData, clustersData]) => {
         dispatch({ type: 'SET_LESSONS', payload: lessonsData.lessons || lessonsData });
@@ -82,7 +82,7 @@ export default function PersonalizePage() {
   const handleSelectCluster = async (clusterId) => {
     dispatch({ type: 'SELECT_CLUSTER', payload: clusterId });
     try {
-      const kbs = await api.get('/api/clusters/' + clusterId + '/kbs');
+      const kbs = await api.get('/clusters/' + clusterId + '/kbs');
       dispatch({ type: 'SET_KBS_FOR_CLUSTER', payload: kbs });
     } catch (e) {
       dispatch({ type: 'SET_ERROR', payload: e.message });
@@ -113,7 +113,7 @@ export default function PersonalizePage() {
     }, 700);
 
     try {
-      const result = await api.post('/api/adapt', {
+      const result = await api.post('/adapt', {
         lesson_id: state.selectedLessonId,
         cluster_id: state.selectedClusterId,
         kb_ids: [...state.selectedKbIds],

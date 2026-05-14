@@ -53,7 +53,7 @@ docker compose up --build -d
 
 Log in with the seeded admin account:
 
-- **Email**: `robert.chen@westfield.edu`
+- **Email**: `rchen@lincoln.edu`
 - **Password**: `admin123`
 
 ## With RAG Pipeline

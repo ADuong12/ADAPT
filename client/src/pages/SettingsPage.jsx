@@ -5,8 +5,8 @@ import { AuthContext } from '../auth/AuthContext';
 export default function SettingsPage() {
   const api = useApi();
   const { user } = useContext(AuthContext);
-  const [provider, setProvider] = useState('gemini');
-  const [model, setModel] = useState('');
+  const [provider, setProvider] = useState('openrouter');
+  const [model, setModel] = useState('nvidia/nemotron-3-super-120b-a12b:free');
   const [apiKey, setApiKey] = useState('');
   const [redacted, setRedacted] = useState('');
   const [saving, setSaving] = useState(false);
@@ -16,11 +16,11 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!user?.teacherId) return;
-    api.get(`/api/teachers/${user.teacherId}/llm-config`)
+    api.get(`/teachers/${user.teacherId}/llm-config`)
       .then((cfg) => {
         if (cfg) {
-          setProvider(cfg.provider || 'gemini');
-          setModel(cfg.model || '');
+          setProvider(cfg.provider || 'openrouter');
+          setModel(cfg.model || 'nvidia/nemotron-3-super-120b-a12b:free');
           setRedacted(cfg.api_key_redacted
             ? `Saved key: ${cfg.api_key_redacted} (paste a new one to replace)`
             : 'No key saved yet.');
@@ -31,20 +31,17 @@ export default function SettingsPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!apiKey) {
-      toast('Paste an API key first', 'error');
-      return;
-    }
     setSaving(true);
     try {
-      await api.put(`/api/teachers/${user.teacherId}/llm-config`, {
+      const payload = {
         provider,
         model: model || null,
-        api_key: apiKey,
-      });
+      };
+      if (apiKey) payload.api_key = apiKey;
+      await api.put(`/teachers/${user.teacherId}/llm-config`, payload);
       setApiKey('');
       // Reload config to show updated redacted key
-      const cfg = await api.get(`/api/teachers/${user.teacherId}/llm-config`);
+      const cfg = await api.get(`/teachers/${user.teacherId}/llm-config`);
       if (cfg) {
         setRedacted(cfg.api_key_redacted
           ? `Saved key: ${cfg.api_key_redacted} (paste a new one to replace)`
@@ -62,7 +59,7 @@ export default function SettingsPage() {
     setTesting(true);
     setTestStatus('testing…');
     try {
-      const r = await api.post(`/api/teachers/${user.teacherId}/llm-config/test`, {});
+      const r = await api.post(`/teachers/${user.teacherId}/llm-config/test`, {});
       if (r && r.ok) {
         setTestStatus(`✓ ${r.provider}/${r.model || 'default'} responded in ${r.latency_ms}ms`);
         setTestStatus((prev) => prev); // trigger style
@@ -95,8 +92,8 @@ export default function SettingsPage() {
           <div className="form-row">
             <label>Provider</label>
             <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-              <option value="gemini">Gemini (Google) — recommended</option>
-              <option value="openrouter">OpenRouter</option>
+              <option value="openrouter">OpenRouter — recommended</option>
+              <option value="gemini">Gemini (Google)</option>
               <option value="huggingface">HuggingFace Inference</option>
             </select>
           </div>
@@ -106,7 +103,7 @@ export default function SettingsPage() {
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="auto: chosen per provider"
+              placeholder="e.g. nvidia/nemotron-3-super-120b-a12b:free"
             />
           </div>
           <div className="form-row">
@@ -115,7 +112,7 @@ export default function SettingsPage() {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="paste new key (existing key is hidden)"
+              placeholder="paste new key to replace existing one (optional)"
             />
             <div id="redacted" style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{redacted}</div>
           </div>

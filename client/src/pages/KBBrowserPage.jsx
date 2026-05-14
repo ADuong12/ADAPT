@@ -16,8 +16,8 @@ export default function KBBrowserPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/api/knowledge-bases'),
-      api.get('/api/clusters'),
+      api.get('/knowledge-bases'),
+      api.get('/clusters'),
     ])
       .then(([kbList, clusterList]) => {
         setKbs(kbList);
@@ -32,7 +32,7 @@ export default function KBBrowserPage() {
   // Load cluster KB mapping when cluster selection changes
   useEffect(() => {
     if (!selectedClusterId) return;
-    api.get(`/api/clusters/${selectedClusterId}/kbs`)
+    api.get(`/clusters/${selectedClusterId}/kbs`)
       .then((current) => {
         setSelectedKbIds(new Set(current.map((k) => k.kb_id)));
       })
@@ -52,12 +52,12 @@ export default function KBBrowserPage() {
     if (!selectedClusterId) return;
     setSaving(true);
     try {
-      await api.put(`/api/clusters/${selectedClusterId}/kbs`, {
+      await api.put(`/clusters/${selectedClusterId}/kbs`, {
         kb_ids: [...selectedKbIds],
       });
       toast('Knowledge base mapping saved', 'success');
       // Refresh clusters to show updated kb_count
-      const clusterList = await api.get('/api/clusters');
+      const clusterList = await api.get('/clusters');
       setClusters(clusterList);
     } catch (e) {
       toast(e.message, 'error');

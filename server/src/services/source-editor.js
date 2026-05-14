@@ -3,7 +3,7 @@ const path = require("path");
 const mammoth = require("mammoth");
 const pdfParse = require("pdf-parse");
 const officeparser = require("officeparser");
-const { Document, Packer, Paragraph, TextRun } = require("docx");
+const { Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun } = require("docx");
 const pptxgenjs = require("pptxgenjs");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const db = require("../db");
@@ -29,9 +29,176 @@ function resolveSourcePath(sourcePath) {
   return candidate;
 }
 
-async function extractDocx(filePath) {
-  const result = await mammoth.extractRawText({ path: filePath });
-  return result.value.split('\n').filter(line => line.trim());
+async function extractDocxSegments(filePath) {
+  const result = await mammoth.convertToHtml({ path: filePath }, {
+    convertImage: mammoth.images.dataUri,
+  });
+  return parseDocxHtml(result.value);
+}
+
+function parseDocxHtml(html) {
+  const segments = [];
+  html = html.replace(/<html[^>]*>|<\/html>|<body[^>]*>|<\/body>/gi, "");
+  html = html.replace(/<br\s*\/?>/gi, "\n");
+
+  // Strip table wrappers but keep cell content (Word often uses tables for layout)
+  html = html.replace(/<\/?(table|thead|tbody|tfoot|tr)[^>]*>/gi, "");
+  html = html.replace(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi, "$1");
+
+  const regex = /<(p|h[1-6]|li)(?:\s+[^>]*)?>([\s\S]*?)<\/\1>/gi;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const tag = match[1].toLowerCase();
+    let content = match[2];
+
+    if (tag === "li") {
+      content = "• " + content;
+    }
+
+    // Split content by inline images
+    const parts = [];
+    const imgRegex = /(<img[^>]+src="([^"]+)"[^>]*>)/gi;
+    let lastIndex = 0;
+    let imgMatch;
+
+    while ((imgMatch = imgRegex.exec(content)) !== null) {
+      if (imgMatch.index > lastIndex) {
+        const text = htmlToMarkdownText(content.slice(lastIndex, imgMatch.index));
+        if (text.trim()) {
+          parts.push({ type: "text", content: text.trim() });
+        }
+      }
+      const src = imgMatch[2];
+      if (src.startsWith("data:")) {
+        const parsed = parseInlineImage(src);
+        if (parsed) parts.push({ type: "image", mimeType: parsed.mimeType, base64: parsed.base64, imageType: parsed.type });
+      }
+      lastIndex = imgRegex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+      const text = htmlToMarkdownText(content.slice(lastIndex));
+      if (text.trim()) {
+        parts.push({ type: "text", content: text.trim() });
+      }
+    }
+
+    if (parts.length === 0) {
+      const text = htmlToMarkdownText(content);
+      if (text.trim()) {
+        parts.push({ type: "text", content: text.trim() });
+      }
+    }
+
+    segments.push(...parts);
+  }
+
+  return segments;
+}
+
+function htmlToMarkdownText(html) {
+  let text = html.replace(/<a\s+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (m, url, linkText) => {
+    const cleanLinkText = linkText.replace(/<[^>]+>/g, "").trim();
+    return `[${cleanLinkText}](${url})`;
+  });
+  text = text.replace(/<[^>]+>/g, "");
+  text = text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+  return text;
+}
+
+function parseInlineImage(src) {
+  const match = src.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  const mimeType = match[1];
+  const base64 = match[2];
+  let type = null;
+  if (mimeType === "image/png") type = "png";
+  else if (mimeType === "image/jpeg" || mimeType === "image/jpg") type = "jpg";
+  else if (mimeType === "image/gif") type = "gif";
+  else if (mimeType === "image/bmp") type = "bmp";
+  else return null;
+  return { mimeType, base64, type };
+}
+
+function getImageDimensions(buffer) {
+  if (buffer.length > 24 && buffer[0] === 0x89 && buffer.toString("ascii", 1, 4) === "PNG") {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return { width, height };
+  }
+  if (buffer.length > 2 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let i = 2;
+    while (i < buffer.length) {
+      if (buffer[i] !== 0xff) {
+        i++;
+        continue;
+      }
+      const marker = buffer[i + 1];
+      if (marker === 0xd9) break;
+      if (marker === 0xd8) {
+        i += 2;
+        continue;
+      }
+      if (marker === 0xc0 || marker === 0xc2) {
+        const height = buffer.readUInt16BE(i + 5);
+        const width = buffer.readUInt16BE(i + 7);
+        return { width, height };
+      }
+      const len = buffer.readUInt16BE(i + 2);
+      i += 2 + len;
+    }
+  }
+  if (buffer.length > 10 && buffer.toString("ascii", 0, 6) === "GIF89a") {
+    const width = buffer.readUInt16LE(6);
+    const height = buffer.readUInt16LE(8);
+    return { width, height };
+  }
+  return null;
+}
+
+function scaleDimensions(width, height, maxDim = 500) {
+  if (!width || !height) return { width: 400, height: 300 };
+  const ratio = Math.min(maxDim / width, maxDim / height);
+  if (ratio < 1) {
+    return { width: Math.round(width * ratio), height: Math.round(height * ratio) };
+  }
+  return { width, height };
+}
+
+function textToDocxRuns(text) {
+  const runs = [];
+  const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      runs.push(new TextRun(text.slice(lastIndex, match.index)));
+    }
+    runs.push(
+      new ExternalHyperlink({
+        children: [new TextRun({ text: match[1], style: "Hyperlink" })],
+        link: match[2],
+      })
+    );
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    runs.push(new TextRun(text.slice(lastIndex)));
+  }
+
+  if (runs.length === 0) {
+    runs.push(new TextRun(text));
+  }
+
+  return runs;
 }
 
 async function extractPptx(filePath) {
@@ -176,13 +343,28 @@ async function rewriteTexts({ teacherId, lesson, sourceFilename, instruction, te
   return { rewritten, result: lastResult };
 }
 
-async function writeDocx(outPath, blocks) {
+async function writeDocx(outPath, segments) {
+  const children = [];
+
+  for (const seg of segments) {
+    if (seg.type === "text") {
+      const runs = textToDocxRuns(seg.content);
+      children.push(new Paragraph({ children: runs }));
+    } else if (seg.type === "image") {
+      const buffer = Buffer.from(seg.base64, "base64");
+      const dims = getImageDimensions(buffer);
+      const scaled = scaleDimensions(dims?.width, dims?.height);
+      const imageRun = new ImageRun({
+        type: seg.imageType,
+        data: buffer,
+        transformation: scaled,
+      });
+      children.push(new Paragraph({ children: [imageRun] }));
+    }
+  }
+
   const doc = new Document({
-    sections: [{
-      children: blocks.map(text => new Paragraph({
-        children: [new TextRun(text)],
-      })),
-    }],
+    sections: [{ children }],
   });
   const buffer = await Packer.toBuffer(doc);
   fs.writeFileSync(outPath, buffer);
@@ -244,8 +426,11 @@ async function editSourceFile({ teacherId, lessonId, sourcePath, instruction, cl
   const outPath = path.join(EDIT_DIR, outName);
 
   let texts;
+  let docxSegments = null;
+
   if (suffix === ".docx") {
-    texts = await extractDocx(source);
+    docxSegments = await extractDocxSegments(source);
+    texts = docxSegments.filter((s) => s.type === "text").map((s) => s.content);
   } else if (suffix === ".pptx") {
     texts = await extractPptx(source);
   } else if (suffix === ".pdf") {
@@ -260,7 +445,11 @@ async function editSourceFile({ teacherId, lessonId, sourcePath, instruction, cl
   });
 
   if (suffix === ".docx") {
-    await writeDocx(outPath, rewritten);
+    const textSegments = docxSegments.filter((s) => s.type === "text");
+    for (let i = 0; i < textSegments.length && i < rewritten.length; i++) {
+      textSegments[i].content = rewritten[i].trim();
+    }
+    await writeDocx(outPath, docxSegments);
   } else if (suffix === ".pptx") {
     await writePptx(outPath, rewritten);
   } else if (suffix === ".pdf") {
@@ -271,7 +460,7 @@ async function editSourceFile({ teacherId, lessonId, sourcePath, instruction, cl
     filename: outName,
     file_type: suffix.slice(1),
     download_url: `/api/lesson-file-edits/${outName}`,
-    note: "Original source file was not changed. Edited copies are regenerated with extracted text — original formatting may not be preserved.",
+    note: "Original source file was not changed. Edited copy preserves hyperlinks and images from the original. Other layout and styling may vary.",
   };
 }
 

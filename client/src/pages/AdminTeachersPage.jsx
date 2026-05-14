@@ -11,7 +11,7 @@ export default function AdminTeachersPage() {
 
   useEffect(() => {
     if (!institutionId) return;
-    api.get(`/api/institutions/${institutionId}/teachers`)
+    api.get(`/institutions/${institutionId}/teachers`)
       .then(setTeachers)
       .catch((e) => setError(e.message));
   }, [institutionId]);

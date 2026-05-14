@@ -40,12 +40,16 @@ services:
       dockerfile: embed-server/Dockerfile
     environment:
       - ADAPT_EMBEDDING_MODEL=${ADAPT_EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+    ports:
+      - "9876:9876"
     profiles:
       - rag
     restart: unless-stopped
 
   chromadb:
     image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
     volumes:
       - chroma-data:/chroma/chroma
     profiles:

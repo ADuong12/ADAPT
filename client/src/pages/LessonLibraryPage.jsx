@@ -20,8 +20,8 @@ export default function LessonLibraryPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/api/lessons?page=1&limit=50'),
-      api.get('/api/clusters'),
+      api.get('/lessons?page=1&limit=50'),
+      api.get('/clusters'),
     ])
       .then(([lessonData, clusterList]) => {
         // lessons endpoint returns { lessons, total, page, limit }
@@ -38,7 +38,7 @@ export default function LessonLibraryPage() {
   // Load source files when lesson selection changes
   useEffect(() => {
     if (!selectedLessonId) return;
-    api.get(`/api/file-edits/lessons/${selectedLessonId}/sources`)
+    api.get(`/file-edits/lessons/${selectedLessonId}/sources`)
       .then((files) => {
         setSourceFiles(files || []);
         if (files && files.length > 0) {
@@ -69,12 +69,12 @@ export default function LessonLibraryPage() {
       // Optionally get KB IDs for the selected cluster
       let kbIds = [];
       if (selectedClusterId) {
-        const kbs = await api.get(`/api/clusters/${selectedClusterId}/kbs`);
+        const kbs = await api.get(`/clusters/${selectedClusterId}/kbs`);
         kbIds = kbs.map((k) => k.kb_id);
       }
 
       // Use the correct API path: POST /api/file-edits (NOT /api/lessons/:id/edit-source-file)
-      const result = await api.post('/api/file-edits', {
+      const result = await api.post('/file-edits', {
         lesson_id: selectedLessonId,
         source_filename: selectedFile,
         instruction: instruction.trim(),

@@ -17,7 +17,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await api.post('/api/auth/login', { email, password });
+      const result = await api.post('/auth/login', { email, password });
       await login(result);
       navigate('/dashboard');
     } catch (err) {
@@ -31,7 +31,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await api.post('/api/auth/register', { name, email, password });
+      const result = await api.post('/auth/register', { name, email, password });
       await login(result);
       navigate('/dashboard');
     } catch (err) {

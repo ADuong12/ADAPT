@@ -20,7 +20,7 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!institutionId) return;
-    api.get(`/api/institutions/${institutionId}/overview`)
+    api.get(`/institutions/${institutionId}/overview`)
       .then(setData)
       .catch((e) => setError(e.message));
   }, [institutionId]);

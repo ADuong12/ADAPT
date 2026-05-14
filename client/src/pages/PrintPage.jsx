@@ -18,13 +18,9 @@ export default function PrintPage() {
       setError('Missing query parameters: adapted_id and version_id are required.');
       return;
     }
-    api.get(`/api/adaptations/${adaptedId}/versions/${versionId}`)
+    api.get(`/adaptations/${adaptedId}/versions/${versionId}`)
       .then((v) => {
         setVersion(v);
-        // Set iframe srcDoc after data loads
-        if (iframeRef.current && v.rendered_html) {
-          iframeRef.current.srcDoc = v.rendered_html;
-        }
       })
       .catch((e) => setError(e.message));
   }, [adaptedId, versionId]);
@@ -80,6 +76,7 @@ export default function PrintPage() {
         sandbox="allow-same-origin"
         title="Print preview"
         style={{ width: '100%', height: 'calc(100vh - 50px)', border: 0 }}
+        srcDoc={version?.rendered_html || ''}
       />
     </>
   );

@@ -1,16 +1,40 @@
 const fs = require("fs");
 const path = require("path");
 const db = require("../db");
-const { decrypt, redact } = require("./crypto");
-const { OpenRouterProvider, coerceToPlanJson } = require("./llm/openrouter");
+const { decrypt } = require("./crypto");
+const { OpenRouterProvider } = require("./llm/openrouter");
 const { retrieveForLesson } = require("./rag/retriever");
 const { renderLessonPlan } = require("./renderer");
-const { createVersion, headVersion, parsePlanJson, listVersions } = require("./versioning");
+const { createVersion, headVersion, parsePlanJson } = require("./versioning");
 
 const SYSTEM_PROMPT = fs.readFileSync(
   path.resolve(__dirname, "..", "prompts", "system.txt"),
   "utf-8"
 );
+
+const JSON_FENCE = /```(?:json)?\s*(\[.*?\])\s*```/s;
+
+function coerceToArray(text) {
+  text = text.trim();
+  let candidate = text;
+  const m = JSON_FENCE.exec(text);
+  if (m) {
+    candidate = m[1];
+  } else {
+    const first = text.indexOf("[");
+    const last = text.lastIndexOf("]");
+    if (first !== -1 && last !== -1 && last > first) {
+      candidate = text.slice(first, last + 1);
+    }
+  }
+  try {
+    const data = JSON.parse(candidate);
+    if (Array.isArray(data)) return data;
+    return [];
+  } catch {
+    return [];
+  }
+}
 
 function resolveProvider(teacherId) {
   const cfg = db.prepare(
@@ -44,7 +68,7 @@ function studentsInClusterForTeacher(teacherId, clusterId) {
   ).all(teacherId, clusterId);
 }
 
-async function buildContextBlocks({ lesson, cluster, kbSpecs: specs, students, previousPlanJson, instruction }) {
+async function buildContextBlocks({ lesson, cluster, kbSpecs: specs, students }) {
   const queryText = [
     lesson.title, lesson.cs_topic, lesson.objectives,
     cluster.cluster_name, cluster.cluster_description,
@@ -84,18 +108,86 @@ async function buildContextBlocks({ lesson, cluster, kbSpecs: specs, students, p
     }
   }
 
-  if (previousPlanJson) {
-    parts.push("\n# Previous version (refine instead of regenerating from scratch)");
-    parts.push(JSON.stringify(previousPlanJson));
+  const chunkMeta = chunks.map((c) => ({ kb_id: c.kb_id, kb_name: c.kb_name, section: c.section_title, distance: c.distance }));
+  return { context: parts.join("\n"), chunkMeta };
+}
+
+async function generateRecommendations(provider, context, previousRecs, instruction) {
+  const system = (
+    "You are an expert K–12 computer science lesson designer. " +
+    "Return ONLY a JSON array of recommendation objects, with NO extra commentary, NO markdown fences, and NO explanation. " +
+    'Each object must have: {"title":"string (5-12 words)","body":"string (1-3 sentences)","tag":"udl | mll | crp | iep | neuro | scaffold | dok | sel | other","sources":["KB #<id> <kb_name>",...]}. ' +
+    "Produce 3 to 6 recommendations grounded in the KB context. Cite KB ids in sources. Be concrete."
+  );
+  const parts = [context];
+  if (previousRecs && previousRecs.length) {
+    parts.push("\n# Previous recommendations (refine or keep based on instruction)");
+    parts.push(JSON.stringify(previousRecs));
     parts.push("\n# Refinement instruction");
-    parts.push(instruction || "");
+    parts.push(instruction || "Improve these recommendations.");
   } else {
     parts.push("\n# Task");
-    parts.push("Produce a personalized lesson plan for the cluster above. Cite KBs in `sources` as 'KB #<id> <kb_name>'. Output JSON only.");
+    parts.push("Generate 3 to 6 personalized recommendations for the cluster above. Cite KBs in sources. Output ONLY a JSON array.");
   }
+  const result = await provider.generate({ system, user: parts.join("\n"), maxTokens: 4096 });
+  const recommendations = coerceToArray(result.text);
+  return { recommendations, tokenCount: result.tokenCount };
+}
 
-  const chunkMeta = chunks.map((c) => ({ kb_id: c.kb_id, kb_name: c.kb_name, section: c.section_title, distance: c.distance }));
-  return { userPrompt: parts.join("\n"), chunkMeta };
+async function generatePlanSteps(provider, context, recommendations, previousSteps, instruction) {
+  const system = (
+    "You are an expert K–12 computer science lesson designer. " +
+    "Return ONLY a JSON array of plan step objects, with NO extra commentary, NO markdown fences, and NO explanation. " +
+    'Each object must have: {"title":"Warm-up | Main activity | Wrap-up | Extension | Assessment","duration":"string like 10 min","body":"string describing teacher and student actions"}. ' +
+    "Produce 3 to 5 concrete plan steps grounded in the recommendations."
+  );
+  const parts = [context];
+  if (recommendations && recommendations.length) {
+    parts.push("\n# Recommendations to implement");
+    parts.push(JSON.stringify(recommendations));
+  }
+  if (previousSteps && previousSteps.length) {
+    parts.push("\n# Previous plan steps (refine or keep based on instruction)");
+    parts.push(JSON.stringify(previousSteps));
+    parts.push("\n# Refinement instruction");
+    parts.push(instruction || "Improve these plan steps.");
+  } else {
+    parts.push("\n# Task");
+    parts.push("Generate 3 to 5 concrete plan steps for the cluster above. Output ONLY a JSON array.");
+  }
+  const result = await provider.generate({ system, user: parts.join("\n"), maxTokens: 4096 });
+  const planSteps = coerceToArray(result.text);
+  return { planSteps, tokenCount: result.tokenCount };
+}
+
+async function generateCompanionMaterials(provider, context, recommendations, planSteps, previousMaterials, instruction) {
+  const system = (
+    "You are an expert K–12 computer science lesson designer. " +
+    "Return ONLY a JSON array of companion material objects, with NO extra commentary, NO markdown fences, and NO explanation. " +
+    'Each object must have: {"title":"string","description":"string"}. ' +
+    "Produce 0 to 6 companion materials grounded in the plan."
+  );
+  const parts = [context];
+  if (recommendations && recommendations.length) {
+    parts.push("\n# Recommendations");
+    parts.push(JSON.stringify(recommendations));
+  }
+  if (planSteps && planSteps.length) {
+    parts.push("\n# Plan steps");
+    parts.push(JSON.stringify(planSteps));
+  }
+  if (previousMaterials && previousMaterials.length) {
+    parts.push("\n# Previous companion materials (refine or keep based on instruction)");
+    parts.push(JSON.stringify(previousMaterials));
+    parts.push("\n# Refinement instruction");
+    parts.push(instruction || "Improve these companion materials.");
+  } else {
+    parts.push("\n# Task");
+    parts.push("Generate 0 to 6 companion materials for the lesson above. Output ONLY a JSON array.");
+  }
+  const result = await provider.generate({ system, user: parts.join("\n"), maxTokens: 4096 });
+  const companionMaterials = coerceToArray(result.text);
+  return { companionMaterials, tokenCount: result.tokenCount };
 }
 
 async function generate({ teacherId, lessonId, clusterId, kbIds, includeStudentContext }) {
@@ -116,26 +208,39 @@ async function generate({ teacherId, lessonId, clusterId, kbIds, includeStudentC
 
   const students = includeStudentContext ? studentsInClusterForTeacher(teacherId, clusterId) : [];
   const specs = kbSpecs(kbIds);
-  const { userPrompt, chunkMeta } = await buildContextBlocks({
-    lesson, cluster, kbSpecs: specs, students, previousPlanJson: null, instruction: null,
+  const { context, chunkMeta } = await buildContextBlocks({
+    lesson, cluster, kbSpecs: specs, students,
   });
 
   const provider = resolveProvider(teacherId);
-  const result = await provider.generate({ system: SYSTEM_PROMPT, user: userPrompt });
-  const planJson = coerceToPlanJson(result.text);
+
+  // Section 1: Recommendations
+  const recResult = await generateRecommendations(provider, context, null, null);
+  // Section 2: Plan steps
+  const stepResult = await generatePlanSteps(provider, context, recResult.recommendations, null, null);
+  // Section 3: Companion materials
+  const matResult = await generateCompanionMaterials(provider, context, recResult.recommendations, stepResult.planSteps, null, null);
+
+  const planJson = {
+    recommendations: recResult.recommendations,
+    plan_steps: stepResult.planSteps,
+    companion_materials: matResult.companionMaterials,
+  };
+
+  const totalTokenCount = (recResult.tokenCount || 0) + (stepResult.tokenCount || 0) + (matResult.tokenCount || 0);
 
   const rendered = await renderLessonPlan({
     lesson: { title: lesson.title, grade_level: lesson.grade_level, cs_topic: lesson.cs_topic, cs_standard: lesson.cs_standard },
     cluster: { cluster_name: cluster.cluster_name, cluster_description: cluster.cluster_description },
     planJson,
     knowledgeBasesUsed: specs,
-    provider: result.provider,
-    modelUsed: result.model,
+    provider: provider.name,
+    modelUsed: provider.model,
   });
 
   const version = createVersion({
     adaptedId, parentVersionId: null, instruction: null, renderedHtml: rendered,
-    planJson, modelUsed: result.model, provider: result.provider, tokenCount: result.tokenCount,
+    planJson, modelUsed: provider.model, provider: provider.name, tokenCount: totalTokenCount,
   });
 
   // Update adapted_lesson summary fields
@@ -154,7 +259,7 @@ async function generate({ teacherId, lessonId, clusterId, kbIds, includeStudentC
   ).run(
     adaptedId,
     JSON.stringify(chunkMeta),
-    result.tokenCount,
+    totalTokenCount,
     JSON.stringify({ lesson: true, cluster: true, students: !!students, kb_chunks: chunkMeta.length, previous_version: false })
   );
 
@@ -174,28 +279,47 @@ async function refine({ teacherId, adaptedId, instruction }) {
   const specs = kbSpecs(kbIds);
   const students = studentsInClusterForTeacher(teacherId, adapted.cluster_id);
 
-  const { userPrompt, chunkMeta } = await buildContextBlocks({
+  const { context, chunkMeta } = await buildContextBlocks({
     lesson, cluster, kbSpecs: specs, students,
-    previousPlanJson: parsePlanJson(head),
-    instruction,
   });
 
+  const previousPlanJson = parsePlanJson(head);
+
   const provider = resolveProvider(teacherId);
-  const result = await provider.generate({ system: SYSTEM_PROMPT, user: userPrompt });
-  const planJson = coerceToPlanJson(result.text);
+
+  // Section 1: Refine recommendations
+  const recResult = await generateRecommendations(
+    provider, context, previousPlanJson?.recommendations, instruction
+  );
+  // Section 2: Refine plan steps
+  const stepResult = await generatePlanSteps(
+    provider, context, recResult.recommendations, previousPlanJson?.plan_steps, instruction
+  );
+  // Section 3: Refine companion materials
+  const matResult = await generateCompanionMaterials(
+    provider, context, recResult.recommendations, stepResult.planSteps, previousPlanJson?.companion_materials, instruction
+  );
+
+  const planJson = {
+    recommendations: recResult.recommendations,
+    plan_steps: stepResult.planSteps,
+    companion_materials: matResult.companionMaterials,
+  };
+
+  const totalTokenCount = (recResult.tokenCount || 0) + (stepResult.tokenCount || 0) + (matResult.tokenCount || 0);
 
   const rendered = await renderLessonPlan({
     lesson: { title: lesson.title, grade_level: lesson.grade_level, cs_topic: lesson.cs_topic, cs_standard: lesson.cs_standard },
     cluster: { cluster_name: cluster.cluster_name, cluster_description: cluster.cluster_description },
     planJson,
     knowledgeBasesUsed: specs,
-    provider: result.provider,
-    modelUsed: result.model,
+    provider: provider.name,
+    modelUsed: provider.model,
   });
 
   const version = createVersion({
     adaptedId, parentVersionId: head.version_id, instruction, renderedHtml: rendered,
-    planJson, modelUsed: result.model, provider: result.provider, tokenCount: result.tokenCount,
+    planJson, modelUsed: provider.model, provider: provider.name, tokenCount: totalTokenCount,
   });
 
   // Update adapted_lesson summary fields
@@ -214,11 +338,11 @@ async function refine({ teacherId, adaptedId, instruction }) {
   ).run(
     adaptedId,
     JSON.stringify(chunkMeta),
-    result.tokenCount,
+    totalTokenCount,
     JSON.stringify({ lesson: true, cluster: true, students: !!students, kb_chunks: chunkMeta.length, previous_version: true })
   );
 
   return { adaptedId, version };
 }
 
-module.exports = { generate, refine, buildContextBlocks, resolveProvider, coerceToPlanJson };
+module.exports = { generate, refine, buildContextBlocks, resolveProvider, kbSpecs };

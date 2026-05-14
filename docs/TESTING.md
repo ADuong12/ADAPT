@@ -26,26 +26,30 @@ ADAPT uses **Vitest 4.1.6** as its test framework with **supertest 7.2.2** for H
 }
 ```
 
+### Client-side testing
+
+The React client (`client/`) has **Vitest 4.1.6** installed as a devDependency but no test script or test files are configured yet. Client-side tests are not currently part of the test suite.
+
 ## Running Tests
 
 ```bash
 # Run all tests
-cd server && npm test
+ cd server && npm test
 
 # Run with verbose output
-cd server && npx vitest run --reporter=verbose
+ cd server && npx vitest run --reporter=verbose
 
 # Run with coverage
-cd server && npm run test:coverage
+ cd server && npm run test:coverage
 
 # Watch mode
-cd server && npm run test:watch
+ cd server && npm run test:watch
 
 # Run a single test file
-cd server && npx vitest run tests/auth.test.js
+ cd server && npx vitest run tests/auth.test.js
 
 # Run a single test by name pattern
-cd server && npx vitest run -t "register"
+ cd server && npx vitest run -t "register"
 ```
 
 **Prerequisites:** None beyond `npm install`. Tests run in-process against the same SQLite database used by the app. The `setup.js` file cleans test tables before each suite to ensure isolation.
@@ -54,18 +58,18 @@ cd server && npx vitest run -t "register"
 
 | File | Tests | Description |
 |------|-------|-------------|
-| `tests/auth.test.js` | — | Registration, login, refresh, logout, setup-password, /me |
+| `tests/auth.test.js` | — | Registration, login, refresh, logout, setup-request |
 | `tests/middleware.test.js` | — | JWT requireAuth, requireRole, requireOwnerOrAdmin |
 | `tests/crypto.test.js` | — | AES-256-GCM encrypt/decrypt/redact |
-| `tests/protected-routes.test.js` | — | Endpoints requiring auth return 401 without token |
-| `tests/routes/teachers.test.js` | — | Dashboard, classes, students |
+| `tests/protected-routes.test.js` | — | Auth-required endpoints and /me, 401/403 boundary tests |
+| `tests/routes/teachers.test.js` | — | Dashboard, classes, students, profile |
 | `tests/routes/lessons.test.js` | — | Lesson CRUD, search, source files |
 | `tests/routes/clusters.test.js` | — | Cluster listing, KB assignment |
 | `tests/routes/knowledge-bases.test.js` | — | KB listing |
 | `tests/routes/settings.test.js` | — | LLM config CRUD, encryption, redaction |
 | `tests/routes/admin.test.js` | — | Admin overview, teachers, classes, clusters |
 | `tests/routes/adaptations.test.js` | — | Generate, refine, rollback, feedback, versions, print |
-| `tests/routes/file-edits.test.js` | — | Source file AI editing |
+| `tests/routes/file-edits.test.js` | — | Source file AI editing and retrieval |
 
 ## Test Helpers
 
@@ -192,11 +196,11 @@ Tests should reference specific IDs only when testing ownership/authorization bo
 ## Coverage
 
 ```bash
-cd server && npm run test:coverage
+ cd server && npm run test:coverage
 ```
 
 This generates a V8 coverage report. No coverage threshold is currently enforced.
 
 ## CI Integration
 
-No CI pipeline is configured. Tests must be run manually (`cd server && npm test`) before merging changes.
+No CI pipeline is configured. Tests must be run manually (` cd server && npm test`) before merging changes.

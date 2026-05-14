@@ -3,6 +3,7 @@ const router = express.Router();
 const requireAuth = require('../middleware/auth');
 const adaptationService = require('../services/adaptation');
 const versioningService = require('../services/versioning');
+const { exportDocx, exportPdf, getSourceFilesForLesson } = require('../services/plan-exporter');
 const db = require('../db');
 
 function requireAdaptationOwner(req, res, next) {
@@ -143,6 +144,70 @@ router.get('/adaptations/:adapted_id/versions/:version_id/export.html', requireA
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(v.rendered_html);
+});
+
+// GET /api/adaptations/:adapted_id/versions/:version_id/export-docx — Download as DOCX
+router.get('/adaptations/:adapted_id/versions/:version_id/export-docx', requireAuth, requireAdaptationOwner, async (req, res) => {
+  try {
+    const adaptedId = parseInt(req.params.adapted_id);
+    const versionId = parseInt(req.params.version_id);
+    const v = db.prepare("SELECT * FROM lesson_plan_version WHERE version_id = ? AND adapted_id = ?").get(versionId, adaptedId);
+    if (!v) return res.status(404).json({ error: 'version not found' });
+
+    const adapted = db.prepare("SELECT * FROM adapted_lesson WHERE adapted_id = ?").get(adaptedId);
+    const lesson = db.prepare("SELECT * FROM lesson WHERE lesson_id = ?").get(adapted.lesson_id);
+    const cluster = db.prepare("SELECT * FROM student_cluster WHERE cluster_id = ?").get(adapted.cluster_id);
+    const planJson = versioningService.parsePlanJson(v);
+    const kbIds = db.prepare("SELECT kb_id FROM lesson_kb_used WHERE adapted_id = ?").all(adaptedId).map(r => r.kb_id);
+    const specs = adaptationService.kbSpecs(kbIds);
+    const sourceFiles = getSourceFilesForLesson(lesson);
+
+    const buffer = await exportDocx({
+      lesson, cluster, planJson,
+      knowledgeBasesUsed: specs,
+      provider: v.provider,
+      modelUsed: v.model_used,
+      sourceFiles,
+    });
+
+    const filename = `adapt-lesson-${adaptedId}-v${v.version_number}.docx`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.send(buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/adaptations/:adapted_id/versions/:version_id/export-pdf — Download as PDF
+router.get('/adaptations/:adapted_id/versions/:version_id/export-pdf', requireAuth, requireAdaptationOwner, async (req, res) => {
+  try {
+    const adaptedId = parseInt(req.params.adapted_id);
+    const versionId = parseInt(req.params.version_id);
+    const v = db.prepare("SELECT * FROM lesson_plan_version WHERE version_id = ? AND adapted_id = ?").get(versionId, adaptedId);
+    if (!v) return res.status(404).json({ error: 'version not found' });
+
+    const adapted = db.prepare("SELECT * FROM adapted_lesson WHERE adapted_id = ?").get(adaptedId);
+    const lesson = db.prepare("SELECT * FROM lesson WHERE lesson_id = ?").get(adapted.lesson_id);
+    const cluster = db.prepare("SELECT * FROM student_cluster WHERE cluster_id = ?").get(adapted.cluster_id);
+    const planJson = versioningService.parsePlanJson(v);
+    const kbIds = db.prepare("SELECT kb_id FROM lesson_kb_used WHERE adapted_id = ?").all(adaptedId).map(r => r.kb_id);
+    const specs = adaptationService.kbSpecs(kbIds);
+
+    const buffer = await exportPdf({
+      lesson, cluster, planJson,
+      knowledgeBasesUsed: specs,
+      provider: v.provider,
+      modelUsed: v.model_used,
+    });
+
+    const filename = `adapt-lesson-${adaptedId}-v${v.version_number}.pdf`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(buffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // POST /api/adaptations/:adapted_id/feedback — Submit feedback

@@ -16,6 +16,8 @@ WORKDIR /app
 COPY --from=builder /build/node_modules ./server/node_modules
 COPY server/src ./server/src
 COPY server/package.json ./server/
+COPY scripts ./scripts
+COPY ["Knowledge Bases", "./Knowledge Bases"]
 COPY adapt-database.sql .
 
 RUN mkdir -p /app/data/uploads

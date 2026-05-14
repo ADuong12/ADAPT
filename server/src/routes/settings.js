@@ -11,7 +11,7 @@ const router = express.Router();
 const llmConfigSchema = z.object({
   provider: z.string().min(1),
   model: z.string().optional(),
-  api_key: z.string().min(4).max(512)
+  api_key: z.string().min(4).max(512).optional()
 });
 
 const ALLOWED_PROVIDERS = ['openrouter', 'openai', 'anthropic'];
@@ -53,12 +53,19 @@ router.put('/:id/llm-config', requireAuth, requireOwnerOrAdmin, (req, res) => {
     throw new ValidationError(`Invalid provider. Allowed: ${ALLOWED_PROVIDERS.join(', ')}`);
   }
 
-  const encrypted = encrypt(api_key);
-
   // Check existing config
   const existing = db.prepare(
-    'SELECT config_id, provider, model FROM llm_provider_config WHERE teacher_id = ? AND provider = ?'
+    'SELECT config_id, provider, model, api_key_encrypted FROM llm_provider_config WHERE teacher_id = ? AND provider = ?'
   ).get(teacherId, provider.toLowerCase());
+
+  let encrypted;
+  if (api_key) {
+    encrypted = encrypt(api_key);
+  } else if (existing) {
+    encrypted = existing.api_key_encrypted;
+  } else {
+    throw new ValidationError('API key required when creating a new provider config');
+  }
 
   if (existing) {
     db.prepare(
@@ -75,10 +82,11 @@ router.put('/:id/llm-config', requireAuth, requireOwnerOrAdmin, (req, res) => {
     'UPDATE llm_provider_config SET is_active = 0 WHERE teacher_id = ? AND provider != ?'
   ).run(teacherId, provider.toLowerCase());
 
+  const decryptedKey = api_key ? api_key : decrypt(encrypted);
   res.json({
     provider: provider.toLowerCase(),
     model: model || null,
-    api_key_redacted: redact(api_key),
+    api_key_redacted: redact(decryptedKey),
     is_active: true
   });
 });

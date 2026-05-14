@@ -19,7 +19,7 @@ export default function AdminClassesPage() {
 
   useEffect(() => {
     if (!institutionId) return;
-    api.get(`/api/institutions/${institutionId}/classes`)
+    api.get(`/institutions/${institutionId}/classes`)
       .then(setClasses)
       .catch((e) => setError(e.message));
   }, [institutionId]);

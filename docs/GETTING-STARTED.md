@@ -6,13 +6,13 @@ This guide walks you through installing, configuring, and running ADAPT locally 
 
 ## Prerequisites
 
-- **Node.js 18+** — Required runtime for the Express server (`node --version` to verify)
-- **npm 9+** — Package manager (bundled with Node.js)
-- **Python 3.10+** — Required for the RAG embedding server (optional if not using RAG features)
-- **Git** — For cloning the repository
-- **An OpenRouter API key** — For LLM-powered lesson adaptation (or configure per-teacher keys in the UI)
+- **Node.js 22+** — Required runtime for the Express server and Vite client. The Docker images use Node 22 (`node --version` to verify).
+- **npm 10+** — Package manager (bundled with Node.js 22).
+- **Python 3.9+** — Required for the optional RAG embedding server (`python3 --version` to verify).
+- **Git** — For cloning the repository.
+- **An LLM API key** — For AI-powered lesson adaptation. The Settings UI supports OpenRouter, Gemini (Google), and HuggingFace, but the adaptation engine currently routes all generation through the OpenRouter provider using the configured key and model name.
 
-Alternatively, **Docker** can run the entire application without installing Node.js or Python locally. See [DOCKER.md](DOCKER.md) for Docker setup.
+Alternatively, **Docker** can run the entire application without installing Node.js or Python locally. See [DOCKER.md](DOCKER.md) for full Docker documentation.
 
 ## Installation Steps
 
@@ -83,11 +83,13 @@ Edit `server/.env` and fill in the values:
 |---|---|---|
 | `JWT_SECRET` | Yes (prod) | Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `ENCRYPTION_KEY` | Yes (prod) | 64-char hex string for AES-256-GCM. Generate same way as `JWT_SECRET`. |
-| `OPENROUTER_API_KEY` | No | Fallback OpenRouter key. Teachers can also configure their own via Settings UI. |
 | `PORT` | No | Defaults to `3000`. |
 | `CORS_ORIGINS` | No | Defaults to `http://localhost:3000,http://localhost:5173`. |
+| `NODE_ENV` | No | Defaults to `development`. |
+| `CHROMA_URL` | No | Defaults to `http://localhost:8000` (only needed for RAG). |
+| `EMBED_SERVER_URL` | No | Defaults to `http://127.0.0.1:9876/embed` (only needed for RAG). |
 
-The dev default `JWT_SECRET` (`dev-secret-change-in-production`) works for local development.
+The dev default `JWT_SECRET` (`dev-secret-change-in-production`) works for local development. A pre-filled `ENCRYPTION_KEY` is already present in the committed `server/.env`, so you only need to change it for production.
 
 ### 5. Initialize the database
 
@@ -101,7 +103,7 @@ If you want to use knowledge base retrieval features:
 
 ```bash
 # Install Python dependencies
-pip install -r requirements.txt
+pip install -r embed-server/requirements.txt
 
 # Start the ChromaDB server
 chroma run --path ./chroma_data --port 8000
@@ -110,7 +112,7 @@ chroma run --path ./chroma_data --port 8000
 python server/src/services/rag/embed_server.py
 
 # Ingest knowledge base documents
-python scripts/ingest_kbs.py
+node scripts/ingest_kbs.js
 ```
 
 The RAG pipeline is optional — lesson adaptation works without it (just without KB-retrieved context).
@@ -148,11 +150,12 @@ The React app starts on `http://localhost:5173` and proxies API requests to the 
 
 1. Open **http://localhost:5173** in your browser.
 2. Register a new account or log in with the seeded admin user:
-   - Email: `robert.chen@westfield.edu`
+   - Email: `rchen@lincoln.edu`
    - Password: `admin123`
 3. Go to **Settings** and configure your LLM provider:
-   - Enter your OpenRouter API key
-   - Optionally specify a model (defaults to `meta-llama/llama-3.1-8b-instruct:free`)
+   - Enter your API key (OpenRouter, Gemini, or HuggingFace)
+   - Optionally specify a model (defaults to `nvidia/nemotron-3-super-120b-a12b:free`)
+   - **Note:** The adaptation engine currently routes all generation through OpenRouter regardless of which provider is selected in the UI.
 4. Go to **Lesson Library** and pick a lesson.
 5. Go to **Personalize**, select a student cluster, and click **Generate** to create an adapted lesson plan.
 
@@ -170,9 +173,7 @@ Add the output to `server/.env` as `ENCRYPTION_KEY=<your-key>`.
 
 ### "No LLM configured" error
 
-Either:
-- Set `OPENROUTER_API_KEY` in `server/.env` as a fallback, **or**
-- Configure an API key in the **Settings** page of the UI.
+Configure an API key in the **Settings** page of the UI. There is no global fallback API key for local development — the server requires a per-teacher provider configuration saved through the UI. (The `ADAPT_GEMINI_API_KEY` env var is referenced by the client as a local fallback but is not yet implemented on the server.)
 
 ### Port already in use
 
@@ -185,7 +186,7 @@ If port 3000 or 5173 is already in use:
 If using RAG features and seeing connection errors:
 - Ensure ChromaDB is running: `chroma run --path ./chroma_data --port 8000`
 - Ensure the embedding server is running: `python server/src/services/rag/embed_server.py`
-- Re-ingest KB documents: `python scripts/ingest_kbs.py`
+- Re-ingest KB documents: `node scripts/ingest_kbs.js`
 
 ## Next Steps
 

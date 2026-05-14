@@ -4,7 +4,7 @@
 
 ## Authentication
 
-ADAPT uses JWT Bearer token authentication. All `/api/` endpoints except `/api/auth/register`, `/api/auth/login`, `/api/auth/setup-password`, `/api/auth/setup-request`, and `/api/health` require a valid `Authorization: Bearer <token>` header.
+ADAPT uses JWT Bearer token authentication. All `/api/` endpoints except `/api/auth/register`, `/api/auth/login`, `/api/auth/setup-password`, `/api/auth/setup-request`, `/api/auth/refresh`, and `/api/health` require a valid `Authorization: Bearer <token>` header.
 
 ### Token Lifecycle
 
@@ -20,7 +20,7 @@ ADAPT uses JWT Bearer token authentication. All `/api/` endpoints except `/api/a
 ### Access Tokens
 
 - **Algorithm**: HS256
-- **Expityy**: 15 minutes
+- **Expiry**: 15 minutes
 - **Payload**: `{ teacher_id, role, institution_id }`
 - **Header**: `Authorization: Bearer <access_token>`
 
@@ -46,6 +46,17 @@ ADAPT uses JWT Bearer token authentication. All `/api/` endpoints except `/api/a
 | `Authorization` | Yes (except auth endpoints) | `Bearer <access_token>` |
 | `Content-Type` | Yes (for POST/PUT/PATCH) | `application/json` |
 
+## Request/Response Formats
+
+Successful responses return the resource directly as JSON (there is no wrapping envelope). Error responses use the standard envelope described below.
+
+Representative success shapes:
+
+- **Single object**: `GET /api/lessons/1` returns `{ lesson_id: 1, title: "...", ... }`
+- **Array**: `GET /api/clusters` returns `[ { cluster_id: 1, ... }, ... ]`
+- **Paginated list**: `GET /api/lessons` returns `{ lessons: [...], total: 3, page: 1, limit: 20 }`
+- **Action result**: `POST /api/auth/register` returns `{ accessToken, refreshToken, user }`
+
 ## Error Responses
 
 All errors follow a standard JSON envelope:
@@ -67,6 +78,8 @@ Optional `detail` field for validation errors:
 }
 ```
 
+In non-production environments, `500` errors also include a `stack` field with the error stack trace.
+
 | HTTP Status | Meaning | Common Causes |
 |---|---|---|
 | `400` | Bad Request | Invalid input, validation failure, LLM not configured |
@@ -75,6 +88,53 @@ Optional `detail` field for validation errors:
 | `404` | Not Found | Resource does not exist |
 | `409` | Conflict | Duplicate email on registration |
 | `500` | Internal Server Error | LLM generation failure, unexpected server error |
+
+## Endpoints Overview
+
+| Method | Path | Description | Auth Required |
+|---|---|---|---|
+| POST | `/api/auth/register` | Create account, receive tokens | No |
+| POST | `/api/auth/login` | Authenticate, receive tokens | No |
+| GET | `/api/auth/setup-request` | Check if teacher needs password setup | No |
+| PUT | `/api/auth/setup-password` | Set initial password for seeded teacher | No |
+| POST | `/api/auth/refresh` | Exchange refresh token for new pair | No |
+| POST | `/api/auth/logout` | Revoke all refresh tokens | Yes |
+| GET | `/api/auth/me` | Get current user info | Yes |
+| GET | `/api/lessons` | List lessons with pagination and search | Yes |
+| GET | `/api/lessons/:id` | Get single lesson | Yes |
+| GET | `/api/lessons/:id/source-files` | List source files (stub) | Yes |
+| GET | `/api/clusters` | List all student clusters | Yes |
+| GET | `/api/clusters/:id/kbs` | List KBs linked to a cluster | Yes |
+| PUT | `/api/clusters/:id/kbs` | Replace KB assignments for a cluster | Yes + Owner/Admin |
+| GET | `/api/knowledge-bases` | List all knowledge bases | Yes |
+| GET | `/api/teachers/:id/dashboard` | Get teacher dashboard data | Yes + Owner/Admin |
+| GET | `/api/teachers/:id/classes` | Get classes with enrolled students | Yes + Owner/Admin |
+| PATCH | `/api/teachers/:id/students/:student_id` | Update student cluster and performance | Yes + Owner/Admin |
+| GET | `/api/teachers/:id/profile` | View teacher profile | Yes + Owner/Admin |
+| PUT | `/api/teachers/:id/profile` | Update teacher profile name | Yes + Owner/Admin |
+| GET | `/api/teachers/:id/llm-config` | Get active LLM provider config | Yes + Owner/Admin |
+| PUT | `/api/teachers/:id/llm-config` | Set or update LLM provider config | Yes + Owner/Admin |
+| POST | `/api/teachers/:id/llm-config/test` | Test LLM connection (stub) | Yes + Owner/Admin |
+| POST | `/api/adapt` | Generate an adapted lesson plan | Yes |
+| GET | `/api/adaptations/:adapted_id` | Get adaptation with version summary | Yes + Owner/Admin |
+| POST | `/api/adaptations/:adapted_id/refine` | Refine adaptation with instruction | Yes + Owner/Admin |
+| GET | `/api/adaptations/:adapted_id/versions` | List all versions of an adaptation | Yes + Owner/Admin |
+| GET | `/api/adaptations/:adapted_id/versions/:version_id` | Get full version detail | Yes + Owner/Admin |
+| POST | `/api/adaptations/:adapted_id/rollback` | Rollback to a previous version | Yes + Owner/Admin |
+| GET | `/api/adaptations/:adapted_id/versions/:version_id/print` | Render version as HTML page | Yes + Owner/Admin |
+| GET | `/api/adaptations/:adapted_id/versions/:version_id/export.html` | Download version as HTML | Yes + Owner/Admin |
+| GET | `/api/adaptations/:adapted_id/versions/:version_id/export-docx` | Download version as DOCX | Yes + Owner/Admin |
+| GET | `/api/adaptations/:adapted_id/versions/:version_id/export-pdf` | Download version as PDF | Yes + Owner/Admin |
+| POST | `/api/adaptations/:adapted_id/feedback` | Submit feedback for an adaptation | Yes + Owner |
+| POST | `/api/file-edits` | AI-edit a lesson source file | Yes |
+| GET | `/api/file-edits/lessons/:lesson_id/sources` | List available source files for a lesson | Yes |
+| GET | `/api/lesson-file-edits/:filename` | Download an AI-edited file | Yes |
+| GET | `/api/institutions/:id/overview` | Get institution aggregate metrics | Yes + Admin |
+| GET | `/api/institutions/:id/teachers` | List teachers in an institution | Yes + Admin |
+| GET | `/api/institutions/:id/classes` | List classes in an institution | Yes + Admin |
+| GET | `/api/institutions/:id/clusters` | Get cluster distribution | Yes + Admin |
+| PUT | `/api/institutions/:id/settings` | System-wide settings (stub) | Yes + Admin |
+| GET | `/api/health` | Health check | No |
 
 ---
 
@@ -145,7 +205,7 @@ Set initial password for a seeded teacher (those without passwords).
 
 ```json
 {
-  "email": "robert.chen@westfield.edu",
+  "email": "rchen@lincoln.edu",
   "password": "newpassword123"
 }
 ```
@@ -399,7 +459,7 @@ Set or update LLM provider configuration. Only one provider can be active per te
 |---|---|---|---|
 | `provider` | string | Yes | One of: `openrouter`, `openai`, `anthropic` |
 | `model` | string | No | Model identifier (stored as null if omitted) |
-| `api_key` | string | Yes | 4-512 characters |
+| `api_key` | string | Yes* | 4-512 characters. *Required when creating a new config; optional when updating an existing config if you want to keep the current key.* |
 
 **Response:** `200 OK`
 
@@ -551,6 +611,22 @@ Download a version as an HTML file.
 
 **Response:** `200 OK` — `Content-Type: text/html; charset=utf-8` with `Content-Disposition: attachment; filename="adapt-lesson-{id}-v{number}.html"`
 
+### GET /api/adaptations/:adapted_id/versions/:version_id/export-docx
+
+Download a version as a Microsoft Word document.
+
+**Authorization:** Owner or admin.
+
+**Response:** `200 OK` — `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document` with `Content-Disposition: attachment; filename="adapt-lesson-{id}-v{number}.docx"`
+
+### GET /api/adaptations/:adapted_id/versions/:version_id/export-pdf
+
+Download a version as a PDF file.
+
+**Authorization:** Owner or admin.
+
+**Response:** `200 OK` — `Content-Type: application/pdf` with `Content-Disposition: attachment; filename="adapt-lesson-{id}-v{number}.pdf"`
+
 ### POST /api/adaptations/:adapted_id/feedback
 
 Submit feedback for an adaptation. Only the owning teacher can submit feedback.
@@ -609,9 +685,10 @@ AI-edit a lesson source file (DOCX, PPTX, or PDF).
 
 ```json
 {
-  "edit_id": "...",
   "filename": "intro-algorithms-edited.pptx",
-  "download_url": "/api/lesson-file-edits/intro-algorithms-edited.pptx"
+  "file_type": "pptx",
+  "download_url": "/api/lesson-file-edits/intro-algorithms-edited.pptx",
+  "note": "Original source file was not changed. Edited copy preserves hyperlinks and images from the original. Other layout and styling may vary."
 }
 ```
 
@@ -619,7 +696,18 @@ AI-edit a lesson source file (DOCX, PPTX, or PDF).
 
 List available source files for a lesson.
 
-**Response:** `200 OK` — returns array of file info objects.
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "source_path": "Sample Lessons/intro-algorithms.pptx",
+    "filename": "intro-algorithms.pptx",
+    "file_type": "pptx",
+    "size_bytes": 256000
+  }
+]
+```
 
 ### GET /api/lesson-file-edits/:filename
 

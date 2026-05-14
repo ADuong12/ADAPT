@@ -24,7 +24,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!user?.teacherId) return;
-    api.get('/api/teachers/' + user.teacherId + '/dashboard')
+    api.get('/teachers/' + user.teacherId + '/dashboard')
       .then(setData)
       .catch((e) => setError(e.message));
   }, [user?.teacherId]);

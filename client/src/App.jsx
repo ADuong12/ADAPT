@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { AuthProvider } from './auth/AuthContext';
 import ProtectedRoute from './auth/ProtectedRoute';
 import AdminRoute from './auth/AdminRoute';
@@ -22,6 +22,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/setup-password" element={<SetupPasswordPage />} />
           <Route element={<ProtectedRoute />}>

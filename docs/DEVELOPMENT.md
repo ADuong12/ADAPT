@@ -66,7 +66,7 @@ For development with live reload, use the local setup below instead.
 |---------|-------------|
 | `cd server && npm start` | Start production server (`node src/server.js`) |
 | `cd server && npm run dev` | Start dev server with nodemon hot reload |
-| `cd server && npm test` | Run all Vitest tests (129 tests, in-process) |
+| `cd server && npm test` | Run all Vitest tests (129 tests, sequential) |
 | `cd server && npm run test:watch` | Run tests in watch mode |
 | `cd server && npm run test:coverage` | Run tests with V8 coverage |
 
@@ -83,8 +83,9 @@ For development with live reload, use the local setup below instead.
 
 | Command | Description |
 |---------|-------------|
-| `python scripts/ingest_kbs.py` | Ingest KB documents into ChromaDB (requires Python + ChromaDB) |
-| `python scripts/ingest_kbs.py --kb-id 4` | Ingest only a single knowledge base |
+| `node scripts/ingest_kbs.js` | Ingest KB documents into ChromaDB (requires running server + embed server) |
+| `node scripts/ingest_kbs.js --kb-id 4` | Ingest only a single knowledge base |
+| `node scripts/seed_rchen_data.js` | Seed demo teacher/class data |
 
 ## Project Structure
 
@@ -119,15 +120,17 @@ ADAPT/
 │   │   │   ├── versioning.js    # Immutable version management (is_head flag)
 │   │   │   ├── renderer.js      # EJS → HTML rendering
 │   │   │   ├── source-editor.js # DOCX/PPTX/PDF AI editing
+│   │   │   ├── plan-exporter.js # Export lesson plans to DOCX/PDF
 │   │   │   ├── auth.js          # Token management (bcryptjs + JWT, access + refresh)
 │   │   │   ├── crypto.js        # AES-256-GCM encrypt/decrypt/redact for API keys
-│   │   │   └── llm/
-│   │   │       └── openrouter.js# OpenRouter LLM provider
-│   │   ├── rag/
-│   │   │   ├── retriever.js      # Semantic KB retrieval
-│   │   │   ├── chunker.js        # Document chunking
-│   │   │   ├── embedder.js       # Embedding service client
-│   │   │   └── store.js          # ChromaDB vector store client
+│   │   │   ├── llm/
+│   │   │   │   └── openrouter.js# OpenRouter LLM provider
+│   │   │   └── rag/
+│   │   │       ├── retriever.js      # Semantic KB retrieval
+│   │   │       ├── chunker.js        # Document chunking
+│   │   │       ├── embedder.js       # Embedding service client
+│   │   │       ├── store.js          # ChromaDB vector store client
+│   │   │       └── embed_server.py   # Python embedding server entrypoint
 │   │   ├── errors/index.js      # Custom error classes (AppError, NotFoundError, ValidationError, AuthError)
 │   │   ├── prompts/system.txt    # System prompt for LLM lesson adaptation
 │   │   └── templates/
@@ -144,12 +147,14 @@ ADAPT/
 │   │   │   ├── AuthContext.jsx    # JWT context provider
 │   │   │   ├── ProtectedRoute.jsx # Route guard for authenticated users
 │   │   │   └── AdminRoute.jsx    # Route guard for admin role
-│   │   └── pages/                # 12 page components
+│   │   ├── layouts/
+│   │   │   └── AppLayout.jsx     # Shared shell layout (nav, sidebar)
+│   │   └── pages/                # 14 page components
 │   └── package.json              # ESM package
 ├── adapt-database.sql            # Full DDL + seed data for SQLite
-├── scripts/                       # Python utility scripts
-│   ├── ingest_kbs.py            # Chunk + embed KB documents into ChromaDB
-│   └── ...                       # Other Python utility scripts
+├── scripts/                       # Node.js utility scripts
+│   ├── ingest_kbs.js            # Chunk + embed KB documents into ChromaDB
+│   └── seed_rchen_data.js       # Demo data seeder
 └── .env.example                  # Environment variable template
 ```
 
@@ -186,6 +191,7 @@ Key notes:
 - **Route structure**: Each domain has its own file in `server/src/routes/`. Routes use Express `Router()` and are registered in `server/src/routes/index.js`.
 - **Database**: Direct `better-sqlite3` prepared statements — no ORM. All queries use parameterized statements.
 - **Auth middleware**: `requireAuth` (JWT validation), `requireRole(...roles)`, `requireOwnerOrAdmin` — attach as route-level middleware.
+- **Linting**: No linter is configured for the server. Run tests (`npm test`) to catch runtime issues.
 - **No comments** unless absolutely necessary — the code is intended to be self-documenting through clear naming.
 
 ### Client (React / ESM)
@@ -195,7 +201,20 @@ Key notes:
 - **Build tool**: Vite 8
 - **Styling**: Plain CSS (no component library)
 - **API layer**: `useApi()` hook wraps fetch with auth headers, token refresh, and error handling
+- **Linting**: ESLint with flat config (`client/eslint.config.js`). Run with `cd client && npm run lint`.
 - **No comments** unless absolutely necessary.
+
+## Branch Conventions
+
+No branch naming convention is documented in this repository.
+
+## PR Process
+
+No pull request template or `CONTRIBUTING.md` is present in this repository. When submitting changes:
+
+- Open a pull request against the default branch with a clear description of the change.
+- Ensure the server test suite passes (`cd server && npm test`).
+- Run client linting (`cd client && npm run lint`) before requesting review.
 
 ## Adding a New API Endpoint
 

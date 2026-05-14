@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef, useContext } from 'react';
+import { useReducer, useEffect, useContext } from 'react';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useApi, toast } from '../api/useApi';
 import { AuthContext } from '../auth/AuthContext';
@@ -81,10 +81,8 @@ export default function WorkspacePage() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(reducer, initialState);
-  const iframeRef = useRef(null);
-
   useEffect(() => {
-    api.get('/api/adaptations/' + adaptedId)
+    api.get('/adaptations/' + adaptedId)
       .then(data => {
         dispatch({ type: 'SET_ADAPTATION', payload: data });
         if (data.versions && data.versions.length > 0) {
@@ -97,15 +95,12 @@ export default function WorkspacePage() {
 
   async function selectVersion(versionId) {
     try {
-      const detail = await api.get('/api/adaptations/' + adaptedId + '/versions/' + versionId);
+      const detail = await api.get('/adaptations/' + adaptedId + '/versions/' + versionId);
       let parent = null;
       if (detail.parent_version_id) {
-        parent = await api.get('/api/adaptations/' + adaptedId + '/versions/' + detail.parent_version_id);
+        parent = await api.get('/adaptations/' + adaptedId + '/versions/' + detail.parent_version_id);
       }
       dispatch({ type: 'SELECT_VERSION', payload: { detail, parent } });
-      if (iframeRef.current) {
-        iframeRef.current.srcDoc = detail.rendered_html;
-      }
     } catch (e) {
       toast('Failed to load version: ' + e.message, 'error');
     }
@@ -117,9 +112,9 @@ export default function WorkspacePage() {
     dispatch({ type: 'SET_REFINE_INSTRUCTION', payload: '' });
     dispatch({ type: 'SET_REFINE_LOADING', payload: true });
     try {
-      const out = await api.post('/api/adaptations/' + adaptedId + '/refine', { instruction: state.refineInstruction });
+      const out = await api.post('/adaptations/' + adaptedId + '/refine', { instruction: state.refineInstruction });
       // Reload adaptation data
-      const data = await api.get('/api/adaptations/' + adaptedId);
+      const data = await api.get('/adaptations/' + adaptedId);
       dispatch({ type: 'SET_ADAPTATION', payload: data });
       if (out.head_version) {
         await selectVersion(out.head_version.version_id);
@@ -136,8 +131,8 @@ export default function WorkspacePage() {
     if (!confirm('Make version ' + state.selectedDetail?.version_number + ' the current draft? Later versions stay in history.')) return;
     dispatch({ type: 'SET_ROLLBACK_LOADING', payload: true });
     try {
-      const out = await api.post('/api/adaptations/' + adaptedId + '/rollback', { version_id: state.selectedId });
-      const data = await api.get('/api/adaptations/' + adaptedId);
+      const out = await api.post('/adaptations/' + adaptedId + '/rollback', { version_id: state.selectedId });
+      const data = await api.get('/adaptations/' + adaptedId);
       dispatch({ type: 'SET_ADAPTATION', payload: data });
       if (out.head) {
         await selectVersion(out.head.version_id);
@@ -154,7 +149,7 @@ export default function WorkspacePage() {
     if (!state.rating) { toast('Pick a rating first', 'error'); return; }
     dispatch({ type: 'SET_FEEDBACK_LOADING', payload: true });
     try {
-      await api.post('/api/adaptations/' + adaptedId + '/feedback', {
+      await api.post('/adaptations/' + adaptedId + '/feedback', {
         rating: state.rating,
         comments: state.feedbackComment || null,
       });
@@ -184,6 +179,52 @@ export default function WorkspacePage() {
       toast('Final HTML downloaded', 'success');
     } catch (err) {
       toast('Download failed: ' + err.message, 'error');
+    } finally {
+      dispatch({ type: 'SET_EXPORT_LOADING', payload: false });
+    }
+  }
+
+  async function exportDocx() {
+    if (!state.selectedId) return;
+    dispatch({ type: 'SET_EXPORT_LOADING', payload: true });
+    try {
+      const token = user?.token || localStorage.getItem('authToken');
+      const res = await fetch('/api/adaptations/' + adaptedId + '/versions/' + state.selectedId + '/export-docx', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'adapt-lesson-' + adaptedId + '-v' + (state.selectedDetail?.version_number || 1) + '.docx';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('DOCX downloaded', 'success');
+    } catch (err) {
+      toast('DOCX download failed: ' + err.message, 'error');
+    } finally {
+      dispatch({ type: 'SET_EXPORT_LOADING', payload: false });
+    }
+  }
+
+  async function exportPdf() {
+    if (!state.selectedId) return;
+    dispatch({ type: 'SET_EXPORT_LOADING', payload: true });
+    try {
+      const token = user?.token || localStorage.getItem('authToken');
+      const res = await fetch('/api/adaptations/' + adaptedId + '/versions/' + state.selectedId + '/export-pdf', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'adapt-lesson-' + adaptedId + '-v' + (state.selectedDetail?.version_number || 1) + '.pdf';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('PDF downloaded', 'success');
+    } catch (err) {
+      toast('PDF download failed: ' + err.message, 'error');
     } finally {
       dispatch({ type: 'SET_EXPORT_LOADING', payload: false });
     }
@@ -234,7 +275,13 @@ export default function WorkspacePage() {
             </button>
           )}
           <button className="btn" style={{ fontSize: 12 }} onClick={exportHTML} disabled={state.exportLoading}>
-            {state.exportLoading ? 'Downloading…' : 'Download Final HTML'}
+            {state.exportLoading ? 'Downloading…' : 'Download HTML'}
+          </button>
+          <button className="btn" style={{ fontSize: 12 }} onClick={exportDocx} disabled={state.exportLoading}>
+            {state.exportLoading ? 'Downloading…' : 'Export DOCX'}
+          </button>
+          <button className="btn" style={{ fontSize: 12 }} onClick={exportPdf} disabled={state.exportLoading}>
+            {state.exportLoading ? 'Downloading…' : 'Export PDF'}
           </button>
           {state.selectedId && (
             <Link
@@ -297,10 +344,10 @@ export default function WorkspacePage() {
           )}
 
           <iframe
-            ref={iframeRef}
             className="plan-frame"
             sandbox="allow-same-origin"
             title="Lesson preview"
+            srcDoc={state.selectedDetail?.rendered_html || ''}
           />
         </div>
 
@@ -339,10 +386,16 @@ export default function WorkspacePage() {
 
           <div className="section-label">Finalize</div>
           <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-            Download the final HTML file, open it later, and use the browser print dialog to save a PDF.
+            Download the adapted plan as HTML, DOCX, or PDF. DOCX preserves original images and hyperlinks.
           </div>
           <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportHTML} disabled={state.exportLoading}>
-            {state.exportLoading ? 'Downloading…' : 'Download Final HTML'}
+            {state.exportLoading ? 'Downloading…' : 'Download HTML'}
+          </button>
+          <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportDocx} disabled={state.exportLoading}>
+            {state.exportLoading ? 'Downloading…' : 'Export DOCX'}
+          </button>
+          <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={exportPdf} disabled={state.exportLoading}>
+            {state.exportLoading ? 'Downloading…' : 'Export PDF'}
           </button>
           {state.selectedId && (
             <Link

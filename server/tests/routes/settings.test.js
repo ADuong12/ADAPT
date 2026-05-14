@@ -89,12 +89,14 @@ describe('Settings endpoints', () => {
     expect(res.status).toBe(403);
   });
 
-  it('PUT /api/teachers/1/llm-config with missing api_key → 400', async () => {
+  it('PUT /api/teachers/1/llm-config with missing api_key reuses existing key → 200', async () => {
     const res = await request(app)
       .put('/api/teachers/1/llm-config')
       .set('Authorization', teacherAuthHeader.Authorization)
       .send({ provider: 'openrouter' });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
+    expect(res.body.provider).toBe('openrouter');
+    expect(res.body.api_key_redacted).toBeDefined();
   });
 
   it('PUT /api/teachers/1/llm-config with empty provider → 400', async () => {

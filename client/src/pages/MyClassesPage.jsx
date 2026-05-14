@@ -22,8 +22,8 @@ export default function MyClassesPage() {
   useEffect(() => {
     if (!user?.teacherId) return;
     Promise.all([
-      api.get(`/api/teachers/${user.teacherId}/classes`),
-      api.get('/api/clusters'),
+      api.get(`/teachers/${user.teacherId}/classes`),
+      api.get('/clusters'),
     ])
       .then(([classData, clusterList]) => {
         setClasses(classData);
@@ -35,13 +35,13 @@ export default function MyClassesPage() {
   const handleSave = async (studentId, clusterId) => {
     setSaving((prev) => ({ ...prev, [studentId]: true }));
     try {
-      await api.patch(`/api/teachers/${user.teacherId}/students/${studentId}`, {
+      await api.patch(`/teachers/${user.teacherId}/students/${studentId}`, {
         cluster_id: clusterId,
       });
       toast('Student support profile updated', 'success');
       // Reload data
       const [classData] = await Promise.all([
-        api.get(`/api/teachers/${user.teacherId}/classes`),
+        api.get(`/teachers/${user.teacherId}/classes`),
       ]);
       setClasses(classData);
     } catch (e) {

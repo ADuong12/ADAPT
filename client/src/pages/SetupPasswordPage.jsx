@@ -18,7 +18,7 @@ export default function SetupPasswordPage() {
     e.preventDefault();
     setChecking(true);
     try {
-      const result = await api.get('/api/auth/setup-request?email=' + encodeURIComponent(email));
+      const result = await api.get('/auth/setup-request?email=' + encodeURIComponent(email));
       setRequiresSetup(result.requires_setup);
       if (!result.requires_setup) {
         toast('Your account is already set up. Please log in.', 'success');
@@ -42,7 +42,7 @@ export default function SetupPasswordPage() {
     }
     setSubmitting(true);
     try {
-      const result = await api.put('/api/auth/setup-password', { email, password });
+      const result = await api.put('/auth/setup-password', { email, password });
       await login(result);
       navigate('/dashboard');
     } catch (err) {
