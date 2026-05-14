@@ -1,0 +1,44 @@
+# Build artifacts
+**/node_modules/
+**/dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+keys.env
+.secret_key
+
+# Runtime data
+adapt.db
+adapt.db-shm
+adapt.db-wal
+chroma_data/
+uploads/
+
+# Version control
+.git/
+
+# IDE and tooling
+.opencode/
+.planning/
+.vscode/
+.idea/
+
+# Documentation and samples (not needed in builds)
+docs/
+planning/
+outputs/
+graphify-out/
+Sample Lessons/
+Knowledge Bases/
+adapt-frontend-prototype-echristian-aduong/
+
+# Other
+*.md
+!README.md
+.DS_Store
+Thumbs.db

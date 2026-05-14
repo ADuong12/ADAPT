@@ -110,7 +110,38 @@ React SPA built with Vite:
 The RAG subsystem uses a Python embedding server alongside the Node.js backend:
 
 1. **Ingestion** (`scripts/ingest_kbs.py`) — Reads KB documents, chunks by section, embeds with `all-MiniLM-L6-v2`, upserts into ChromaDB collections per `kb_id`.
-2. **Embedding server** (`server/src/services/rag/embed_server.py`) — Flaskservice that accepts text and returns embeddings via HTTP.
+2. **Embedding server** (`server/src/services/rag/embed_server.py`) — Flask service that accepts text and returns embeddings via HTTP.
+
+## Docker Deployment
+
+ADAPT ships with Docker support for production deployment. See [DOCKER.md](DOCKER.md) for full details.
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Host :80                                            │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  nginx                                          │  │
+│  │  /          → React SPA (static files)         │  │
+│  │  /api/*    → proxy to server:3000              │  │
+│  │  /uploads/* → proxy to server:3000             │  │
+│  └────────────────────────────────────────────────┘  │
+│                                                      │
+│  ┌────────────────────┐                              │
+│  │  server :3000      │  Express API + SQLite        │
+│  └────────────────────┘                              │
+│                                                      │
+│  ┌────────────────────┐  ┌────────────────────┐      │
+│  │  embed-server :9876│  │  chromadb :8000     │      │
+│  │  (optional: rag)   │  │  (optional: rag)    │      │
+│  └────────────────────┘  └────────────────────┘      │
+└──────────────────────────────────────────────────────┘
+```
+
+Key design decisions:
+
+- **Single port**: Nginx reverse-proxies the API, so only port 80 is exposed to the host
+- **Data volume**: SQLite database, uploads, and `.secret_key` persist in a Docker named volume at `/app/data`
+- **RAG as opt-in**: The `embed-server` and `chromadb` containers run only with `--profile rag`
 3. **Retrieval** (`server/src/services/rag/retriever.js`) — Embeds the query via the embed server, queries ChromaDB per requested KB with cosine similarity, returns top-k chunks.
 4. **Context injection** — Retrieved chunks are injected into the LLM prompt with KB attribution.
 

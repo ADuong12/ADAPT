@@ -4,6 +4,26 @@
 
 ## Local Setup
 
+### Option A: Docker
+
+```bash
+git clone https://github.com/<org>/ADAPT.git
+cd ADAPT
+
+# Configure secrets
+cp .env.docker.example .env
+# Edit .env — set JWT_SECRET and ENCRYPTION_KEY
+
+# Build and start
+docker compose up --build -d
+```
+
+Open **http://localhost**. See [DOCKER.md](DOCKER.md) for details.
+
+For development with live reload, use the local setup below instead.
+
+### Option B: Local Development
+
 1. Clone the repository and enter the project directory:
    ```bash
    git clone https://github.com/<org>/ADAPT.git
@@ -132,6 +152,30 @@ ADAPT/
 │   └── ...                       # Other Python utility scripts
 └── .env.example                  # Environment variable template
 ```
+
+## Docker Development
+
+The project includes Docker configuration for containerized deployment:
+
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Multi-service orchestration (nginx, server, embed-server, chromadb) |
+| `server/Dockerfile` | Multi-stage Node.js build with SQLite persistence |
+| `server/docker-entrypoint.sh` | Symlinks persistent volume to app paths |
+| `client/Dockerfile` | Multi-stage Vite build → Nginx serving + reverse proxy |
+| `client/nginx.default.conf` | Nginx config: serves SPA, proxies `/api/` to server |
+| `embed-server/Dockerfile` | Python + sentence-transformers embedding service |
+| `embed-server/requirements.txt` | Python dependencies for embedding server |
+| `.dockerignore` | Excludes secrets, node_modules, build artifacts from builds |
+| `.env.docker.example` | Template for Docker environment variables (no actual secrets) |
+
+Key notes:
+
+- The **nginx** container serves the frontend and reverse-proxies `/api/` to the server — no CORS issues
+- The **server** container symlinks `adapt.db`, `uploads/`, and `.secret_key` to a persistent Docker volume
+- **RAG services** (embed-server, chromadb) are opt-in via `docker compose --profile rag`
+- Environment variables come from `.env` at the project root (gitignored, never committed)
+- See [DOCKER.md](DOCKER.md) for full details
 
 ## Code Style
 

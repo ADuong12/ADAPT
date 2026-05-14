@@ -6,6 +6,24 @@
 
 ## Quick Start
 
+### Docker (recommended)
+
+```bash
+git clone https://github.com/your-org/ADAPT.git
+cd ADAPT
+
+# Configure secrets
+cp .env.docker.example .env
+# Edit .env — set JWT_SECRET and ENCRYPTION_KEY
+
+# Build and start
+docker compose up --build -d
+```
+
+Open **http://localhost** in your browser. See [docs/DOCKER.md](docs/DOCKER.md) for full details, including RAG pipeline setup.
+
+### Local Development
+
 ```bash
 # Clone and install
 git clone https://github.com/your-org/ADAPT.git
@@ -18,11 +36,11 @@ cd server && npm install
 cd ../client && npm install
 
 # Set up environment variables
-cp ../.env.example ../.env
+cp .env.example .env
 # Edit .env — set JWT_SECRET, ENCRYPTION_KEY, OPENROUTER_API_KEY
 
 # Initialize the database with seed data
-cd ../server && npm run seed
+cd server && npm run seed
 
 # Start backend (port 3000)
 cd server && npm run dev
@@ -42,7 +60,8 @@ Open **http://localhost:5173** in your browser.
 | Auth | bcryptjs + JWT (access + refresh tokens) |
 | Encryption | AES-256-GCM for LLM API keys |
 | LLM | OpenRouter (multi-model access) |
-| RAG | ChromaDB + sentence-transformers (embedded Python service) |
+| RAG | ChromaDB + sentence-transformers (Python embedding service) |
+| Docker | Docker Compose (nginx, server, embed-server, chromadb) |
 | Templates | EJS for lesson plan rendering |
 | Testing | Vitest + supertest (129 in-process tests) |
 
@@ -83,19 +102,15 @@ ADAPT/
 │   │   │   └── llm/openrouter.js # OpenRouter provider
 │   │   ├── rag/
 │   │   │   ├── retriever.js    # Semantic KB retrieval
-│   │   │   ├── chunker.py      # Document chunking (Python)
-│   │   │   ├── embedder.py     # Sentence-transformers embedding (Python)
-│   │   │   └── store.py       # ChromaDB vector store (Python)
+│   │   │   ├── chunker.js      # Document chunking
+│   │   │   ├── embedder.js     # Embedding service client
+│   │   │   ├── embed_server.py # Python embedding server (Flask)
+│   │   │   └── store.js        # ChromaDB vector store client
 │   │   ├── errors/index.js     # Custom error classes (NotFoundError, ValidationError)
 │   │   └── templates/           # EJS lesson plan template
 │   ├── tests/                  # Vitest + supertest tests
-│   │   ├── setup.js             # Test DB cleanup
-│   │   ├── helpers.js           # generateToken, authHeader utilities
-│   │   ├── auth.test.js         # Auth endpoint tests
-│   │   ├── middleware.test.js   # JWT + RBAC middleware tests
-│   │   ├── crypto.test.js       # Encryption unit tests
-│   │   ├── protected-routes.test.js
-│   │   └── routes/             # Per-route integration tests
+│   ├── Dockerfile              # Server Docker image
+│   ├── docker-entrypoint.sh    # Server container startup script
 │   ├── vitest.config.js
 │   └── package.json
 ├── client/                      # React SPA (Vite)
@@ -123,10 +138,18 @@ ADAPT/
 │   │       ├── AdminDashboardPage.jsx
 │   │       ├── AdminTeachersPage.jsx
 │   │       └── AdminClassesPage.jsx
+│   ├── Dockerfile              # Client + nginx Docker image
+│   ├── nginx.default.conf      # Nginx reverse proxy config
 │   └── package.json
+├── embed-server/                # Python embedding service Docker image
+│   ├── Dockerfile
+│   └── requirements.txt
+├── docker-compose.yml          # Multi-service orchestration
+├── .env.docker.example         # Docker environment variable template
+├── .dockerignore               # Docker build exclusions
 ├── Knowledge Bases/             # Source KB documents for RAG
 ├── Sample Lessons/              # Sample .docx/.pptx/.pdf lesson files
-└── .env.example                # Environment variable template
+└── .env.example                # Local development environment variable template
 ```
 
 ## API Overview

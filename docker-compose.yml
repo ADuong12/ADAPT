@@ -1,0 +1,57 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    ports:
+      - "${ADAPT_PORT:-80}:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file: .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - CHROMA_URL=http://chromadb:8000
+      - EMBED_SERVER_URL=http://embed-server:9876/embed
+    volumes:
+      - server-data:/app/data
+    depends_on:
+      embed-server:
+        condition: service_started
+        required: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api').then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  embed-server:
+    build:
+      context: .
+      dockerfile: embed-server/Dockerfile
+    environment:
+      - ADAPT_EMBEDDING_MODEL=${ADAPT_EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+    profiles:
+      - rag
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma-data:/chroma/chroma
+    profiles:
+      - rag
+    restart: unless-stopped
+
+volumes:
+  server-data:
+  chroma-data:

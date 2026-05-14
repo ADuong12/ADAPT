@@ -12,7 +12,38 @@ This guide walks you through installing, configuring, and running ADAPT locally 
 - **Git** — For cloning the repository
 - **An OpenRouter API key** — For LLM-powered lesson adaptation (or configure per-teacher keys in the UI)
 
+Alternatively, **Docker** can run the entire application without installing Node.js or Python locally. See [DOCKER.md](DOCKER.md) for Docker setup.
+
 ## Installation Steps
+
+### Option A: Docker (recommended)
+
+The quickest way to get started. No Node.js or Python installation required.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/your-org/ADAPT.git
+cd ADAPT
+
+# 2. Create your environment file
+cp .env.docker.example .env
+# Edit .env — set JWT_SECRET and ENCRYPTION_KEY
+
+# 3. Build and start
+docker compose up --build -d
+```
+
+Open **http://localhost** in your browser.
+
+To include the RAG pipeline (embedding server + ChromaDB):
+
+```bash
+docker compose --profile rag up --build -d
+```
+
+See [DOCKER.md](DOCKER.md) for full Docker documentation, including configuration, data persistence, and troubleshooting.
+
+### Option B: Local Development
 
 ### 1. Clone the repository
 

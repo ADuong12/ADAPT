@@ -2,7 +2,26 @@
 
 # Configuration
 
-ADAPT uses environment variables for secrets and runtime settings, loaded via `dotenv` from a `.env` file in the `server/` directory. All configuration is centralized in `server/src/config/index.js`.
+ADAPT uses environment variables for secrets and runtime settings. Variables are loaded via `dotenv` from a `.env` file in local development, or passed through Docker Compose in container deployments.
+
+## Docker Configuration
+
+When running with Docker Compose, environment variables are passed through the `.env` file at the project root. Copy `.env.docker.example` to `.env` and fill in the values:
+
+```bash
+cp .env.docker.example .env
+```
+
+See [DOCKER.md](DOCKER.md) for the full list of Docker-specific variables and setup instructions.
+
+In Docker, the following are set automatically:
+
+| Variable | Docker Value | Notes |
+|----------|-------------|-------|
+| `NODE_ENV` | `production` | Set in docker-compose.yml |
+| `PORT` | `3000` | Internal server port |
+| `CHROMA_URL` | `http://chromadb:8000` | Internal DNS name |
+| `EMBED_SERVER_URL` | `http://embed-server:9876/embed` | Internal DNS name |
 
 ## Environment Variables
 
@@ -23,6 +42,9 @@ ADAPT uses environment variables for secrets and runtime settings, loaded via `d
 |---|---|---|---|
 | `CHROMA_URL` | No | `http://localhost:8000` | ChromaDB server URL for vector storage. |
 | `EMBED_SERVER_URL` | No | `http://127.0.0.1:9876/embed` | Python embedding server URL for sentence-transformers. |
+| `ADAPT_SECRET_KEY` | No | *(auto)* | Fernet key for encrypting stored LLM API keys. Auto-generated and stored in `.secret_key` if not set. |
+| `ADAPT_EMBEDDING_MODEL` | No | `all-MiniLM-L6-v2` | Sentence-transformers model for KB chunk embeddings. |
+| `ADAPT_PORT` | No | `80` | Host port exposed by the Docker nginx container (Docker only). |
 
 ## Configuration Loading
 
@@ -38,6 +60,13 @@ The `.env` file is resolved relative to `server/src/config/`, pointing to `serve
 cd server
 cp .env.example .env
 # Edit .env — set JWT_SECRET, ENCRYPTION_KEY, and optionally OPENROUTER_API_KEY
+```
+
+When running with Docker, environment variables come from the project-root `.env` file instead. Copy `.env.docker.example` to `.env`:
+
+```bash
+cp .env.docker.example .env
+# Edit .env — set JWT_SECRET, ENCRYPTION_KEY
 ```
 
 ## File-Based Paths
@@ -108,12 +137,21 @@ The following files and directories are in `.gitignore` and must not be committe
 | File / Directory | Purpose |
 |---|---|
 | `server/.env` | Environment variables (secrets) |
+| `.env` (project root) | Docker environment variables (secrets) |
 | `server/.secret_key` | Auto-generated encryption key (Not currently used — ENCRYPTION_KEY is in .env) |
 | `node_modules/` | Installed dependencies |
 | `chroma_data/` | ChromaDB vector store data |
 | `uploads/` | User-uploaded files |
 
 ## Environment-Specific Notes
+
+### Docker
+
+- `JWT_SECRET` and `ENCRYPTION_KEY` **must** be set in `.env` at the project root
+- `NODE_ENV` is set to `production` automatically by `docker-compose.yml`
+- `CHROMA_URL` and `EMBED_SERVER_URL` use internal Docker DNS names automatically
+- `CORS_ORIGINS` is not needed — Nginx reverse-proxies the API, making frontend and backend same-origin
+- SQLite database and uploads persist in a Docker named volume (`server-data`) at `/app/data`
 
 ### Development
 
