@@ -4,191 +4,231 @@
 
 ## Authentication
 
-ADAPT uses a header-based authentication mechanism for the MVP. All `/api/` endpoints (except `/api/auth/*`) require an `X-Teacher-Id` header identifying the current teacher.
+ADAPT uses JWT Bearer token authentication. All `/api/` endpoints except `/api/auth/register`, `/api/auth/login`, `/api/auth/setup-password`, `/api/auth/setup-request`, and `/api/health` require a valid `Authorization: Bearer <token>` header.
 
-```
-X-Teacher-Id: <teacher_id>
-```
+### Token Lifecycle
 
-The login flow works as follows:
+| Action | Endpoint | Description |
+|---|---|---|
+| Register | `POST /api/auth/register` | Create account, receive access + refresh tokens |
+| Login | `POST /api/auth/login` | Authenticate, receive access + refresh tokens |
+| Setup password | `PUT /api/auth/setup-password` | Set password for seeded teacher (no password yet) |
+| Refresh | `POST /api/auth/refresh` | Exchange refresh token for new token pair (one-time use) |
+| Logout | `POST /api/auth/logout` | Revoke all refresh tokens for the authenticated user |
+| Current user | `GET /api/auth/me` | Get current user info from JWT |
 
-1. Call `GET /api/auth/teachers` to list all teachers.
-2. Call `POST /api/auth/fake-login` with a `teacher_id` to receive the teacher object.
-3. Include the returned `teacher_id` as the `X-Teacher-Id` header in all subsequent requests.
+### Access Tokens
 
-Some endpoints enforce additional authorization:
-- **Self or admin** — the requesting teacher must own the resource or have the `admin` role.
-- **Self only** — the requesting teacher must own the resource (e.g., LLM config settings).
-- **Admin only** — the requesting teacher must have the `admin` role.
+- **Algorithm**: HS256
+- **Expityy**: 15 minutes
+- **Payload**: `{ teacher_id, role, institution_id }`
+- **Header**: `Authorization: Bearer <access_token>`
 
-## Endpoints Overview
+### Refresh Tokens
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/` | Service info (service name, frontend path, OpenAPI docs path) | None |
-| GET | `/api/health` | Health check | None |
-| GET | `/api/auth/teachers` | List all teachers (for login picker) | None |
-| POST | `/api/auth/fake-login` | Fake login returning a teacher object | None |
-| GET | `/api/auth/me` | Get current authenticated teacher | X-Teacher-Id |
-| GET | `/api/lessons` | List all lessons | X-Teacher-Id |
-| GET | `/api/lessons/{lesson_id}` | Get a lesson by ID | X-Teacher-Id |
-| GET | `/api/lessons/{lesson_id}/source-files` | List source files for a lesson | X-Teacher-Id |
-| POST | `/api/lessons/{lesson_id}/edit-source-file` | AI-edit a lesson source file | X-Teacher-Id |
-| GET | `/api/clusters` | List all clusters with KB and student counts | X-Teacher-Id |
-| GET | `/api/clusters/{cluster_id}/kbs` | List KBs linked to a cluster | X-Teacher-Id |
-| PUT | `/api/clusters/{cluster_id}/kbs` | Update KB links for a cluster | X-Teacher-Id |
-| GET | `/api/knowledge-bases` | List all knowledge bases | X-Teacher-Id |
-| GET | `/api/teachers/{teacher_id}/dashboard` | Dashboard data (metrics, recent adaptations, roster) | Self or admin |
-| GET | `/api/teachers/{teacher_id}/classes` | Classes with enrolled students | Self or admin |
-| PATCH | `/api/teachers/{teacher_id}/students/{student_id}` | Update student cluster/performance | Self or admin |
-| GET | `/api/teachers/{teacher_id}/llm-config` | Get active LLM configuration | Self only |
-| PUT | `/api/teachers/{teacher_id}/llm-config` | Set LLM configuration | Self only |
-| POST | `/api/teachers/{teacher_id}/llm-config/test` | Test LLM connection | Self only |
-| POST | `/api/adapt` | Generate an adapted lesson | X-Teacher-Id |
-| GET | `/api/adaptations/{adapted_id}` | Get adaptation with version summary | Self or admin |
-| POST | `/api/adaptations/{adapted_id}/refine` | Refine an adaptation with an instruction | X-Teacher-Id |
-| GET | `/api/adaptations/{adapted_id}/versions` | List all versions of an adaptation | Self or admin |
-| GET | `/api/adaptations/{adapted_id}/versions/{version_id}` | Get version detail with rendered HTML | Self or admin |
-| POST | `/api/adaptations/{adapted_id}/rollback` | Rollback to a specific version | X-Teacher-Id |
-| GET | `/api/adaptations/{adapted_id}/versions/{version_id}/print` | Render version as HTML page | Self or admin |
-| GET | `/api/adaptations/{adapted_id}/versions/{version_id}/export.html` | Download version as HTML file | Self or admin |
-| POST | `/api/adaptations/{adapted_id}/feedback` | Submit feedback (rating 1–5) | Self only |
-| GET | `/api/lesson-file-edits/{filename}` | Download an AI-edited file | X-Teacher-Id |
-| GET | `/api/institutions/{institution_id}/overview` | Institution metrics | Admin only |
-| GET | `/api/institutions/{institution_id}/teachers` | Teachers with stats for an institution | Admin only |
-| GET | `/api/institutions/{institution_id}/classes` | Classes for an institution | Admin only |
-| GET | `/api/institutions/{institution_id}/clusters` | Cluster distribution for an institution | Admin only |
+- **Format**: UUID v4
+- **Expiry**: 7 days
+- **One-time use**: Exchanged and invalidated on each refresh
+- **Storage**: SHA-256 hashed in `refresh_token` table
 
-## Request and Response Formats
+### Authorization Middleware
 
-All request and response bodies use JSON. The API is built on FastAPI and provides an interactive OpenAPI/Swagger UI at `/docs`.
+| Middleware | Purpose |
+|---|---|
+| `requireAuth` | Validates JWT, sets `req.user`. Returns 401 on missing/invalid/expired tokens. |
+| `requireRole(...roles)` | Checks `req.user.role` against allowed roles. Returns 403 if insufficient permissions. |
+| `requireOwnerOrAdmin` | Checks `req.user.teacher_id === req.params.id || req.user.role === 'admin'`. Returns 403 for non-owner non-admin. |
 
-### Common Request Headers
+## Common Request Headers
 
 | Header | Required | Description |
-|--------|----------|-------------|
-| `X-Teacher-Id` | Yes (except `/api/auth/*`) | Integer ID of the authenticated teacher |
-| `Content-Type` | Yes (for POST/PUT/PATCH) | Must be `application/json` |
+|---|---|---|
+| `Authorization` | Yes (except auth endpoints) | `Bearer <access_token>` |
+| `Content-Type` | Yes (for POST/PUT/PATCH) | `application/json` |
+
+## Error Responses
+
+All errors follow a standard JSON envelope:
+
+```json
+{
+  "error": "Error message describing the problem",
+  "status": 400
+}
+```
+
+Optional `detail` field for validation errors:
+
+```json
+{
+  "error": "Invalid request body",
+  "status": 400,
+  "detail": [{ "path": ["body", "api_key"], "message": "..." }]
+}
+```
+
+| HTTP Status | Meaning | Common Causes |
+|---|---|---|
+| `400` | Bad Request | Invalid input, validation failure, LLM not configured |
+| `401` | Unauthorized | Missing, invalid, or expired JWT token |
+| `403` | Forbidden | Non-owner accessing another teacher's resource, non-admin accessing admin endpoint |
+| `404` | Not Found | Resource does not exist |
+| `409` | Conflict | Duplicate email on registration |
+| `500` | Internal Server Error | LLM generation failure, unexpected server error |
+
+---
 
 ## Auth Endpoints
 
-### GET /api/auth/teachers
+### POST /api/auth/register
 
-List all teachers. Public endpoint used by the login page.
-
-**Response:** `200 OK`
-
-```json
-[
-  {
-    "teacher_id": 1,
-    "first_name": "Jane",
-    "last_name": "Smith",
-    "email": "jane@school.edu",
-    "role": "teacher",
-    "institution_id": 1
-  }
-]
-```
-
-### POST /api/auth/fake-login
-
-Authenticate as a teacher. Accepts any combination of fields; if `teacher_id` is provided and exists, returns that teacher. Falls back to `teacher_id=1` otherwise.
+Register a new user account.
 
 **Request body:**
 
 ```json
 {
-  "teacher_id": 1
+  "name": "Jane Smith",
+  "email": "jane@school.edu",
+  "password": "securepassword"
 }
 ```
 
-All fields (`username`, `password`, `teacher_id`) are optional.
+| Field | Type | Required | Validation |
+|---|---|---|---|
+| `name` | string | Yes | Split into `first_name` and `last_name` |
+| `email` | string | Yes | Valid email format, must be unique |
+| `password` | string | Yes | Minimum 8 characters |
 
-**Response:** `200 OK` — returns a `TeacherOut` object.
+**Response:** `200 OK`
+
+```json
+{
+  "accessToken": "eyJhbGci...",
+  "refreshToken": "550e8400-...",
+  "user": { "teacher_id": 5, "email": "jane@school.edu", "role": "teacher" }
+}
+```
+
+### POST /api/auth/login
+
+Authenticate with email and password.
+
+**Request body:**
+
+```json
+{
+  "email": "jane@school.edu",
+  "password": "securepassword"
+}
+```
+
+**Response:** `200 OK` — returns token pair and user object.
+
+### GET /api/auth/setup-request
+
+Check if a teacher needs to set up their password.
+
+**Query params:** `?email=jane@school.edu`
+
+**Response:** `200 OK`
+
+```json
+{ "requires_setup": true }
+```
+
+### PUT /api/auth/setup-password
+
+Set initial password for a seeded teacher (those without passwords).
+
+**Request body:**
+
+```json
+{
+  "email": "robert.chen@westfield.edu",
+  "password": "newpassword123"
+}
+```
+
+**Response:** `200 OK` — returns token pair and user object.
+
+### POST /api/auth/refresh
+
+Exchange a refresh token for a new access/refresh token pair. The old refresh token is invalidated.
+
+**Request body:**
+
+```json
+{ "refreshToken": "550e8400-..." }
+```
+
+**Response:** `200 OK`
+
+```json
+{ "accessToken": "eyJhbGci...", "refreshToken": "660f9511-..." }
+```
+
+### POST /api/auth/logout
+
+Revoke all refresh tokens for the authenticated user. Requires `Authorization` header.
+
+**Response:** `200 OK`
+
+```json
+{ "ok": true }
+```
 
 ### GET /api/auth/me
 
-Get the currently authenticated teacher.
+Get the current authenticated user's info.
 
-**Response:** `200 OK` — returns a `TeacherOut` object.
+**Response:** `200 OK`
+
+```json
+{ "teacher_id": 1, "first_name": "Maria", "last_name": "Hernandez", "email": "maria@westfield.edu", "institution_id": 1, "role": "teacher" }
+```
+
+---
 
 ## Lesson Endpoints
 
 ### GET /api/lessons
 
-List all lessons.
+List lessons with pagination and search.
+
+**Query params:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | 1 | Page number (1-based) |
+| `limit` | integer | 20 | Results per page (max 100) |
+| `q` | string | — | Search in title and cs_topic |
+| `grade_level` | string | — | Filter by grade level |
 
 **Response:** `200 OK`
 
 ```json
-[
-  {
-    "lesson_id": 1,
-    "title": "Intro to Algorithms",
-    "grade_level": "3-5",
-    "cs_topic": "Algorithms",
-    "cs_standard": "CS-3-5-1",
-    "objectives": "Students will understand basic algorithmic thinking"
-  }
-]
+{
+  "lessons": [
+    { "lesson_id": 1, "title": "Intro to Algorithms", "grade_level": "3-5", "cs_topic": "Algorithms", "cs_standard": "CS-3-5-1", "objectives": "..." }
+  ],
+  "total": 3,
+  "page": 1,
+  "limit": 20
+}
 ```
 
-### GET /api/lessons/{lesson_id}
+### GET /api/lessons/:id
 
 Get a single lesson by ID.
 
-**Response:** `200 OK` — returns a `LessonOut` object, or `404` if not found.
+**Response:** `200 OK` — returns lesson object, or `404` if not found.
 
-### GET /api/lessons/{lesson_id}/source-files
+### GET /api/lessons/:id/source-files
 
-List source files (`.docx`, `.pptx`, `.pdf`) attached to a lesson.
+_List source files for a lesson._ **Not yet implemented** — returns `501`.
 
-**Response:** `200 OK`
-
-```json
-[
-  {
-    "source_path": "Sample Lessons/intro-algorithms.pptx",
-    "filename": "intro-algorithms.pptx",
-    "file_type": "pptx",
-    "size_bytes": 245760
-  }
-]
-```
-
-### POST /api/lessons/{lesson_id}/edit-source-file
-
-AI-edit a lesson's source file, producing a modified version.
-
-**Request body:**
-
-```json
-{
-  "source_path": "Sample Lessons/intro-algorithms.pptx",
-  "instruction": "Simplify the language for ELL students",
-  "cluster_id": 2,
-  "kb_ids": [1, 3]
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `source_path` | string | Yes | Path to the source file |
-| `instruction` | string | Yes | Edit instruction (1–2000 chars) |
-| `cluster_id` | integer | No | Cluster context for the edit |
-| `kb_ids` | integer[] | No | Knowledge base IDs to inform the edit |
-
-**Response:** `200 OK`
-
-```json
-{
-  "filename": "intro-algorithms-edited.pptx",
-  "file_type": "pptx",
-  "download_url": "/api/lesson-file-edits/intro-algorithms-edited.pptx",
-  "note": "AI-edited file ready for download"
-}
-```
+---
 
 ## Cluster Endpoints
 
@@ -200,35 +240,31 @@ List all student clusters with their linked knowledge base count and student cou
 
 ```json
 [
-  {
-    "cluster_id": 1,
-    "cluster_name": "ELL Beginners",
-    "cluster_description": "Students with beginning English proficiency",
-    "kb_count": 3,
-    "student_count": 12
-  }
+  { "cluster_id": 1, "cluster_name": "ELL Beginners", "cluster_description": "...", "kb_count": 3, "student_count": 12 }
 ]
 ```
 
-### GET /api/clusters/{cluster_id}/kbs
+### GET /api/clusters/:id/kbs
 
 List knowledge bases linked to a specific cluster.
 
-**Response:** `200 OK` — returns an array of `KnowledgeBaseOut` objects.
+**Response:** `200 OK` — returns array of KB objects.
 
-### PUT /api/clusters/{cluster_id}/kbs
+### PUT /api/clusters/:id/kbs
 
-Replace the knowledge bases linked to a cluster. All existing links are removed and replaced with the provided list.
+Replace KB assignments for a cluster. All existing links are removed and replaced.
 
 **Request body:**
 
 ```json
-{
-  "kb_ids": [1, 3, 5]
-}
+{ "kb_ids": [1, 3, 5] }
 ```
 
-**Response:** `200 OK` — returns the updated array of `KnowledgeBaseOut` objects.
+**Authorization:** `requireOwnerOrAdmin`
+
+**Response:** `200 OK` — returns updated array of KB objects.
+
+---
 
 ## Knowledge Base Endpoints
 
@@ -240,63 +276,47 @@ List all knowledge bases.
 
 ```json
 [
-  {
-    "kb_id": 1,
-    "kb_name": "UDL Guidelines",
-    "category": "framework",
-    "description": "Universal Design for Learning guidelines for accessible instruction",
-    "source_url": "https://udlguidelines.cast.org/"
-  }
+  { "kb_id": 1, "kb_name": "UDL Guidelines", "category": "framework", "description": "...", "source_url": "https://..." }
 ]
 ```
 
+---
+
 ## Teacher Endpoints
 
-### GET /api/teachers/{teacher_id}/dashboard
+### GET /api/teachers/:id/dashboard
 
-Get dashboard data for a teacher including metrics, recent adaptations, and roster.
+Get dashboard data for a teacher: profile, institution, metrics, recent adaptations, and roster.
 
-**Authorization:** Self or admin.
+**Authorization:** `requireOwnerOrAdmin`
 
 **Response:** `200 OK`
 
 ```json
 {
-  "teacher": { "teacher_id": 1, "first_name": "Jane", "last_name": "Smith", "email": "jane@school.edu", "role": "teacher", "institution_id": 1 },
+  "teacher": { "teacher_id": 1, "first_name": "Maria", "last_name": "Hernandez", "email": "maria@westfield.edu", "institution_id": 1, "role": "teacher" },
   "institution": { "institution_id": 1, "name": "Westfield Elementary", "type": "public", "district": "Westfield SD" },
-  "metrics": { "students": 28, "clusters": 4, "adaptations": 12, "knowledge_bases": 8, "classes": 3 },
-  "recent_adaptations": [
-    {
-      "adapted_id": 5,
-      "lesson_title": "Intro to Algorithms",
-      "grade_level": "3-5",
-      "cs_topic": "Algorithms",
-      "cluster_name": "ELL Beginners",
-      "head_version_number": 2,
-      "generated_at": "2025-03-14T10:30:00Z"
-    }
-  ],
-  "roster": [
-    { "student_id": 1, "student_name": "Alex Johnson", "cluster_name": "ELL Beginners", "class_name": "CS Fundamentals" }
-  ]
+  "metrics": { "students": 28, "clusters": 4, "adaptations": 12, "knowledge_bases": 16, "classes": 3 },
+  "recent_adaptations": [ { "adapted_id": 5, "lesson_title": "...", "grade_level": "3-5", "cs_topic": "...", "cluster_name": "...", "generated_at": "..." } ],
+  "roster": [ { "student_id": 1, "student_name": "Alex Johnson", "cluster_name": "ELL Beginners", "class_name": "CS Fundamentals" } ]
 }
 ```
 
-### GET /api/teachers/{teacher_id}/classes
+### GET /api/teachers/:id/classes
 
-Get all classes for a teacher, each with its enrolled students.
+Get classes for a teacher, each with enrolled students.
 
-**Authorization:** Self or admin.
+**Authorization:** `requireOwnerOrAdmin`
 
-**Response:** `200 OK` — returns an array of `ClassOut` objects, each with an embedded `students` array.
+**Response:** `200 OK` — returns array of class objects with nested `students` array.
 
-### PATCH /api/teachers/{teacher_id}/students/{student_id}
+### PATCH /api/teachers/:id/students/:student_id
 
-Update a student's cluster assignment and/or performance levels. The student must be enrolled in one of the teacher's classes.
+Update a student's cluster and/or performance levels. The student must be enrolled in one of the teacher's classes.
 
-**Authorization:** Self or admin.
+**Authorization:** `requireOwnerOrAdmin`
 
-**Request body:** All fields are optional (partial update).
+**Request body:** All fields optional (partial update).
 
 ```json
 {
@@ -307,81 +327,102 @@ Update a student's cluster assignment and/or performance levels. The student mus
 }
 ```
 
-**Response:** `200 OK` — returns the updated `StudentOut` object.
+**Response:** `200 OK` — returns updated student object with `cluster_name`.
 
-## Settings Endpoints
+### GET /api/teachers/:id/profile
 
-### GET /api/teachers/{teacher_id}/llm-config
+View a teacher's profile.
 
-Get the active LLM provider configuration for a teacher.
+**Authorization:** `requireOwnerOrAdmin`
 
-**Authorization:** Self only.
+**Response:** `200 OK` — returns teacher object.
+
+### PUT /api/teachers/:id/profile
+
+Update a teacher's profile name. Email and role cannot be changed via this endpoint.
+
+**Authorization:** `requireOwnerOrAdmin`
+
+**Request body:**
+
+```json
+{
+  "first_name": "Maria",
+  "last_name": "Hernandez-Lopez"
+}
+```
+
+Both fields required. Max 50 characters each.
+
+**Response:** `200 OK` — returns updated teacher object.
+
+---
+
+## Settings / LLM Config Endpoints
+
+### GET /api/teachers/:id/llm-config
+
+Get the active LLM provider configuration for a teacher. API key is returned redacted.
+
+**Authorization:** `requireOwnerOrAdmin`
 
 **Response:** `200 OK`
 
 ```json
 {
-  "provider": "gemini",
-  "model": "gemini-2.5-flash",
-  "api_key_redacted": "sk-...xyz",
+  "provider": "openrouter",
+  "model": "meta-llama/llama-3.1-8b-instruct:free",
+  "api_key_redacted": "sk-\u2026abcd",
   "is_active": true
 }
 ```
 
 Returns `null` if no configuration has been set yet.
 
-### PUT /api/teachers/{teacher_id}/llm-config
+### PUT /api/teachers/:id/llm-config
 
-Set or update the LLM provider configuration. Only one provider can be active at a time; setting a new provider deactivates the previous one.
+Set or update LLM provider configuration. Only one provider can be active per teacher at a time; setting a new provider deactivates the previous one. The API key is encrypted with AES-256-GCM before storage.
 
-**Authorization:** Self only.
+**Authorization:** `requireOwnerOrAdmin`
 
 **Request body:**
 
 ```json
 {
-  "provider": "gemini",
-  "model": "gemini-2.5-flash",
-  "api_key": "AIza..."
+  "provider": "openrouter",
+  "model": "meta-llama/llama-3.1-8b-instruct:free",
+  "api_key": "sk-or-v1-..."
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `provider` | string | Yes | One of: `gemini`, `openrouter`, `huggingface` |
-| `model` | string | No | Model identifier (provider default used if omitted) |
-| `api_key` | string | Yes | API key for the provider (4–512 chars) |
-
-**Provider defaults** when `model` is omitted:
-- `gemini` → `gemini-2.5-flash`
-- `openrouter` → `meta-llama/llama-3.1-8b-instruct:free`
-- `huggingface` → `meta-llama/Llama-3.1-8B-Instruct`
-
-**Response:** `200 OK` — returns `LLMConfigOut`.
-
-### POST /api/teachers/{teacher_id}/llm-config/test
-
-Test the active LLM configuration by making a ping request to the provider.
-
-**Authorization:** Self only.
+| Field | Type | Required | Validation |
+|---|---|---|---|
+| `provider` | string | Yes | One of: `openrouter`, `openai`, `anthropic` |
+| `model` | string | No | Model identifier (stored as null if omitted) |
+| `api_key` | string | Yes | 4-512 characters |
 
 **Response:** `200 OK`
 
 ```json
 {
-  "ok": true,
-  "provider": "gemini",
-  "model": "gemini-2.5-flash",
-  "latency_ms": 342,
-  "error": null
+  "provider": "openrouter",
+  "model": "meta-llama/llama-3.1-8b-instruct:free",
+  "api_key_redacted": "sk-\u2026abcd",
+  "is_active": true
 }
 ```
+
+### POST /api/teachers/:id/llm-config/test
+
+Test the active LLM provider connection. **Not yet implemented** — returns `501`.
+
+---
 
 ## Adaptation Endpoints
 
 ### POST /api/adapt
 
-Generate an adapted lesson for a specific student cluster.
+Generate an adapted lesson plan for a specific student cluster.
 
 **Request body:**
 
@@ -395,21 +436,13 @@ Generate an adapted lesson for a specific student cluster.
 ```
 
 | Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
+|---|---|---|---|---|
 | `lesson_id` | integer | Yes | — | ID of the lesson to adapt |
-| `cluster_id` | integer | Yes | — | ID of the student cluster to adapt for |
-| `kb_ids` | integer[] | No | `[]` | Knowledge base IDs to inform the adaptation |
-| `include_student_context` | boolean | No | `true` | Whether to include student context in the prompt |
+| `cluster_id` | integer | Yes | — | ID of the student cluster |
+| `kb_ids` | integer[] | No | `[]` | Knowledge base IDs for RAG context |
+| `include_student_context` | boolean | No | `true` | Include student profiles in LLM prompt |
 
-**Response:** `200 OK` — returns `AdaptationOut`.
-
-### GET /api/adaptations/{adapted_id}
-
-Get an adaptation with its version history summary.
-
-**Authorization:** Self or admin.
-
-**Response:** `200 OK`
+**Response:** `201 Created` — returns `AdaptationOut` with head version and full version list.
 
 ```json
 {
@@ -419,88 +452,110 @@ Get an adaptation with its version history summary.
   "cluster_id": 2,
   "head_version": {
     "version_id": 8,
-    "version_number": 2,
-    "parent_version_id": 7,
+    "version_number": 1,
+    "parent_version_id": null,
     "is_head": true,
     "instruction": null,
-    "model_used": "gemini-2.5-flash",
-    "provider": "gemini",
+    "model_used": "meta-llama/llama-3.1-8b-instruct:free",
+    "provider": "openrouter",
     "token_count": 1200,
     "created_at": "2025-03-14T10:35:00Z"
   },
-  "versions": [ ]
+  "versions": [ { "version_id": 8, "..." : "..." } ]
 }
 ```
 
-### POST /api/adaptations/{adapted_id}/refine
+**Errors:** Returns `400` if no LLM configured for the teacher; `500` on LLM generation failure.
 
-Refine an existing adaptation with an additional instruction. Creates a new version.
+### GET /api/adaptations/:adapted_id
+
+Get an adaptation with its version summary.
+
+**Authorization:** Owner or admin (checked by `requireAdaptationOwner` middleware).
+
+**Response:** `200 OK` — returns `AdaptationOut`.
+
+### POST /api/adaptations/:adapted_id/refine
+
+Refine an existing adaptation with an additional instruction. Creates a new version linked via `parent_version_id`.
+
+**Authorization:** Owner or admin.
 
 **Request body:**
 
 ```json
-{
-  "instruction": "Add more visual aids and simplify vocabulary"
-}
+{ "instruction": "Add more visual aids and simplify vocabulary" }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `instruction` | string | Yes | Refinement instruction (1–2000 chars) |
+**Response:** `200 OK` — returns `AdaptationOut` with new head version.
 
-**Response:** `200 OK` — returns `AdaptationOut`.
-
-### GET /api/adaptations/{adapted_id}/versions
+### GET /api/adaptations/:adapted_id/versions
 
 List all versions of an adaptation.
 
-**Authorization:** Self or admin.
+**Authorization:** Owner or admin.
 
-**Response:** `200 OK` — returns an array of `VersionSummary` objects.
+**Response:** `200 OK` — returns array of `VersionSummary` objects.
 
-### GET /api/adaptations/{adapted_id}/versions/{version_id}
+### GET /api/adaptations/:adapted_id/versions/:version_id
 
-Get full detail for a specific version, including rendered HTML and the structured plan.
+Get full version detail including rendered HTML and structured plan JSON.
 
-**Authorization:** Self or admin.
+**Authorization:** Owner or admin.
 
-**Response:** `200 OK` — returns `VersionDetail` (extends `VersionSummary` with `rendered_html` and `plan_json`).
+**Response:** `200 OK`
 
-### POST /api/adaptations/{adapted_id}/rollback
+```json
+{
+  "version_id": 8,
+  "version_number": 1,
+  "parent_version_id": null,
+  "is_head": true,
+  "instruction": null,
+  "model_used": "meta-llama/llama-3.1-8b-instruct:free",
+  "provider": "openrouter",
+  "token_count": 1200,
+  "created_at": "2025-03-14T10:35:00Z",
+  "rendered_html": "<html>...</html>",
+  "plan_json": { "recommendations": [], "plan_steps": [], "companion_materials": [] }
+}
+```
 
-Rollback an adaptation to a previous version. The target version becomes the new head.
+### POST /api/adaptations/:adapted_id/rollback
+
+Rollback to a previous version. The target version becomes the new head; no data is deleted.
+
+**Authorization:** Owner or admin.
 
 **Request body:**
 
 ```json
-{
-  "version_id": 7
-}
+{ "version_id": 7 }
 ```
 
 **Response:** `200 OK` — returns `AdaptationOut`.
 
-### GET /api/adaptations/{adapted_id}/versions/{version_id}/print
+### GET /api/adaptations/:adapted_id/versions/:version_id/print
 
-Render a version's adapted lesson as an HTML page (for printing/viewing).
+Render a version as an HTML page (for viewing/printing).
 
-**Authorization:** Self or admin.
+**Authorization:** Owner or admin.
 
-**Response:** `200 OK` — returns `text/html`.
+**Response:** `200 OK` — `Content-Type: text/html; charset=utf-8`
 
-### GET /api/adaptations/{adapted_id}/versions/{version_id}/export.html
+### GET /api/adaptations/:adapted_id/versions/:version_id/export.html
 
-Download a version's adapted lesson as an HTML file.
+Download a version as an HTML file.
 
-**Authorization:** Self or admin.
+**Authorization:** Owner or admin.
 
-**Response:** `200 OK` — returns `text/html` with `Content-Disposition: attachment` header. Filename format: `adapt-lesson-{adapted_id}-v{version_number}.html`.
+**Response:** `200 OK` — `Content-Type: text/html; charset=utf-8` with `Content-Disposition: attachment; filename="adapt-lesson-{id}-v{number}.html"`
 
-### POST /api/adaptations/{adapted_id}/feedback
+### POST /api/adaptations/:adapted_id/feedback
 
-Submit feedback for an adaptation. Only the owning teacher can provide feedback.
+Submit feedback for an adaptation. Only the owning teacher can submit feedback.
 
-**Authorization:** Self only.
+**Authorization:** Owner only (not admin).
 
 **Request body:**
 
@@ -512,34 +567,75 @@ Submit feedback for an adaptation. Only the owning teacher can provide feedback.
 ```
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|---|---|---|---|
 | `rating` | integer | Yes | Rating from 1 to 5 |
 | `comments` | string | No | Optional text feedback |
 
 **Response:** `200 OK`
 
 ```json
-{
-  "ok": true,
-  "feedback_id": 3
-}
+{ "ok": true, "feedback_id": 3 }
 ```
+
+---
 
 ## File Edit Endpoints
 
-### GET /api/lesson-file-edits/{filename}
+### POST /api/file-edits
 
-Download an AI-edited file by filename. This endpoint serves files produced by the `POST /api/lessons/{lesson_id}/edit-source-file` endpoint.
+AI-edit a lesson source file (DOCX, PPTX, or PDF).
 
-**Response:** `200 OK` — returns the file as a download.
+**Request body:**
+
+```json
+{
+  "lesson_id": 1,
+  "source_path": "Sample Lessons/intro-algorithms.pptx",
+  "instruction": "Simplify the language for ELL students",
+  "cluster_id": 2,
+  "kb_ids": [1, 3]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `lesson_id` | integer | Yes | Lesson the file belongs to |
+| `source_path` | string | Yes | Path to the source file |
+| `instruction` | string | Yes | Edit instruction |
+| `cluster_id` | integer | No | Cluster context for the edit |
+| `kb_ids` | integer[] | No | Knowledge base IDs to inform the edit |
+
+**Response:** `201 Created`
+
+```json
+{
+  "edit_id": "...",
+  "filename": "intro-algorithms-edited.pptx",
+  "download_url": "/api/lesson-file-edits/intro-algorithms-edited.pptx"
+}
+```
+
+### GET /api/file-edits/lessons/:lesson_id/sources
+
+List available source files for a lesson.
+
+**Response:** `200 OK` — returns array of file info objects.
+
+### GET /api/lesson-file-edits/:filename
+
+Download an AI-edited file by filename.
+
+**Response:** `200 OK` — file download.
+
+---
 
 ## Admin Endpoints
 
-### GET /api/institutions/{institution_id}/overview
+All admin endpoints require `requireAuth` + `requireRole('admin')`.
+
+### GET /api/institutions/:id/overview
 
 Get aggregate metrics for an institution.
-
-**Authorization:** Admin only.
 
 **Response:** `200 OK`
 
@@ -550,79 +646,67 @@ Get aggregate metrics for an institution.
 }
 ```
 
-### GET /api/institutions/{institution_id}/teachers
+### GET /api/institutions/:id/teachers
 
 List all teachers in an institution with their class, student, and adaptation counts.
 
-**Authorization:** Admin only.
+**Response:** `200 OK`
 
-**Response:** `200 OK` — returns an array of objects with `teacher`, `class_count`, `student_count`, and `adaptation_count`.
+```json
+[
+  {
+    "teacher": { "teacher_id": 1, "first_name": "Maria", "last_name": "Hernandez", "email": "maria@westfield.edu", "role": "teacher", "institution_id": 1 },
+    "class_count": 3,
+    "student_count": 28,
+    "adaptation_count": 12
+  }
+]
+```
 
-### GET /api/institutions/{institution_id}/classes
+### GET /api/institutions/:id/classes
 
 List all classes in an institution with teacher name and student count.
 
-**Authorization:** Admin only.
+**Response:** `200 OK`
 
-**Response:** `200 OK` — returns an array with `class_id`, `class_name`, `grade_band`, `teacher_name`, `student_count`.
+```json
+[
+  { "class_id": 1, "class_name": "CS Fundamentals", "grade_band": "3-5", "teacher_name": "Maria Hernandez", "student_count": 28 }
+]
+```
 
-### GET /api/institutions/{institution_id}/clusters
+### GET /api/institutions/:id/clusters
 
 Get cluster distribution across an institution's students and classes.
 
-**Authorization:** Admin only.
-
-**Response:** `200 OK` — returns an array with `cluster_name`, `student_count`, `class_count`.
-
-## Health Endpoints
-
-### GET /
-
-Returns service metadata.
-
 **Response:** `200 OK`
 
 ```json
-{
-  "service": "ADAPT",
-  "frontend": "/app/login.html",
-  "openapi": "/docs"
-}
+[
+  { "cluster_name": "ELL Beginners", "student_count": 12, "class_count": 3 }
+]
 ```
+
+### PUT /api/institutions/:id/settings
+
+_System-wide settings management._ **Not yet implemented** — returns `501`.
+
+---
+
+## Health Endpoint
 
 ### GET /api/health
 
-Returns database health status.
+Health check endpoint. No authentication required.
 
 **Response:** `200 OK`
 
 ```json
-{
-  "ok": true,
-  "db": "adapt.db"
-}
+{ "status": "ok", "timestamp": "2025-03-14T10:30:00.000Z" }
 ```
 
-## Error Codes
-
-All errors follow a standard JSON envelope:
-
-```json
-{
-  "detail": "Error message describing the problem"
-}
-```
-
-| HTTP Status | Meaning | Common Causes |
-|-------------|---------|---------------|
-| `400` | Bad Request | Invalid input, LLM generation failure, unknown LLM provider |
-| `401` | Unauthorized | Missing or invalid `X-Teacher-Id` header |
-| `403` | Forbidden | Teacher accessing another teacher's data without admin role |
-| `404` | Not Found | Resource does not exist (lesson, adaptation, version, cluster, etc.) |
-| `500` | Internal Server Error | No teachers seeded in database, unexpected server error |
+---
 
 ## Rate Limits
 
-The ADAPT API does not implement application-level rate limiting in its current MVP version. However, LLM provider endpoints (`POST /api/adapt`, `POST /api/adaptations/{id}/refine`, `POST /api/teachers/{id}/llm-config/test`) are subject to the rate limits of the configured LLM provider (Gemini, OpenRouter, or HuggingFace).
-
-<!-- VERIFY: LLM provider rate limits depend on the user's plan and API key tier -->
+ADAPT does not implement application-level rate limiting. However, LLM provider endpoints (`POST /api/adapt`, `POST /api/adaptations/:id/refine`, `POST /api/file-edits`) are subject to the rate limits of the configured OpenRouter API key.
