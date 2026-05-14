@@ -1,17 +1,10 @@
-const { describe, it, before } = require('node:test');
-const assert = require('node:assert/strict');
-const jwt = require('jsonwebtoken');
-
-// We need config for jwtSecret before importing middleware
-const config = require('../src/config');
+import { describe, it, expect } from 'vitest';
+import jwt from 'jsonwebtoken';
+import requireAuth from '../src/middleware/auth';
+import { requireRole, requireOwnerOrAdmin } from '../src/middleware/rbac';
+import config from '../src/config';
 
 describe('requireAuth middleware', () => {
-  let requireAuth;
-
-  before(() => {
-    requireAuth = require('../src/middleware/auth');
-  });
-
   function mockReqRes(authHeader) {
     const req = { headers: {} };
     if (authHeader) req.headers.authorization = authHeader;
@@ -35,10 +28,10 @@ describe('requireAuth middleware', () => {
 
     requireAuth(req, res, next);
 
-    assert.ok(wasNextCalled(), 'next() should be called');
-    assert.equal(req.user.teacher_id, 1);
-    assert.equal(req.user.role, 'teacher');
-    assert.equal(req.user.institution_id, 1);
+    expect(wasNextCalled()).toBe(true);
+    expect(req.user.teacher_id).toBe(1);
+    expect(req.user.role).toBe('teacher');
+    expect(req.user.institution_id).toBe(1);
   });
 
   it('returns 401 when no Authorization header', () => {
@@ -46,9 +39,9 @@ describe('requireAuth middleware', () => {
 
     requireAuth(req, res, next);
 
-    assert.ok(!wasNextCalled(), 'next() should NOT be called');
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Missing or invalid authorization header');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Missing or invalid authorization header');
   });
 
   it('returns 401 when Authorization header does not start with Bearer', () => {
@@ -56,21 +49,21 @@ describe('requireAuth middleware', () => {
 
     requireAuth(req, res, next);
 
-    assert.ok(!wasNextCalled());
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Missing or invalid authorization header');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Missing or invalid authorization header');
   });
 
   it('returns 401 with "Token expired" on expired token', () => {
     const payload = { teacher_id: 1, role: 'teacher', institution_id: 1 };
-    const token = jwt.sign(payload, config.jwtSecret, { expiresIn: '-1s' }); // already expired
+    const token = jwt.sign(payload, config.jwtSecret, { expiresIn: '-1s' });
     const { req, res, next, wasNextCalled, getStatus, getBody } = mockReqRes(`Bearer ${token}`);
 
     requireAuth(req, res, next);
 
-    assert.ok(!wasNextCalled());
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Token expired');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Token expired');
   });
 
   it('returns 401 with "Invalid token" on malformed token', () => {
@@ -78,9 +71,9 @@ describe('requireAuth middleware', () => {
 
     requireAuth(req, res, next);
 
-    assert.ok(!wasNextCalled());
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Invalid token');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Invalid token');
   });
 
   it('returns 401 with "Invalid token" when signed with wrong secret', () => {
@@ -90,19 +83,13 @@ describe('requireAuth middleware', () => {
 
     requireAuth(req, res, next);
 
-    assert.ok(!wasNextCalled());
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Invalid token');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Invalid token');
   });
 });
 
 describe('requireRole middleware', () => {
-  let requireRole;
-
-  before(() => {
-    requireRole = require('../src/middleware/rbac').requireRole;
-  });
-
   function mockReqRes(user) {
     const req = { user };
     let statusCode = null;
@@ -110,8 +97,6 @@ describe('requireRole middleware', () => {
     const res = {
       status(code) { statusCode = code; return res; },
       json(body) { responseBody = body; return res; },
-      _getStatus() { return statusCode; },
-      _getBody() { return responseBody; },
     };
     let nextCalled = false;
     const next = () => { nextCalled = true; };
@@ -124,7 +109,7 @@ describe('requireRole middleware', () => {
 
     middleware(req, res, next);
 
-    assert.ok(wasNextCalled(), 'next() should be called for admin');
+    expect(wasNextCalled()).toBe(true);
   });
 
   it('blocks teacher when requireRole("admin") is used', () => {
@@ -133,9 +118,9 @@ describe('requireRole middleware', () => {
 
     middleware(req, res, next);
 
-    assert.ok(!wasNextCalled(), 'next() should NOT be called');
-    assert.equal(getStatus(), 403);
-    assert.equal(getBody().error, 'Insufficient permissions');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(403);
+    expect(getBody().error).toBe('Insufficient permissions');
   });
 
   it('returns 401 when req.user is missing', () => {
@@ -144,19 +129,13 @@ describe('requireRole middleware', () => {
 
     middleware(req, res, next);
 
-    assert.ok(!wasNextCalled());
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Authentication required');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Authentication required');
   });
 });
 
 describe('requireOwnerOrAdmin middleware', () => {
-  let requireOwnerOrAdmin;
-
-  before(() => {
-    requireOwnerOrAdmin = require('../src/middleware/rbac').requireOwnerOrAdmin;
-  });
-
   function mockReqRes(user, params) {
     const req = { user, params };
     let statusCode = null;
@@ -164,8 +143,6 @@ describe('requireOwnerOrAdmin middleware', () => {
     const res = {
       status(code) { statusCode = code; return res; },
       json(body) { responseBody = body; return res; },
-      _getStatus() { return statusCode; },
-      _getBody() { return responseBody; },
     };
     let nextCalled = false;
     const next = () => { nextCalled = true; };
@@ -180,7 +157,7 @@ describe('requireOwnerOrAdmin middleware', () => {
 
     requireOwnerOrAdmin(req, res, next);
 
-    assert.ok(wasNextCalled(), 'next() should be called for owner');
+    expect(wasNextCalled()).toBe(true);
   });
 
   it('allows admin regardless of route :id param', () => {
@@ -191,7 +168,7 @@ describe('requireOwnerOrAdmin middleware', () => {
 
     requireOwnerOrAdmin(req, res, next);
 
-    assert.ok(wasNextCalled(), 'next() should be called for admin');
+    expect(wasNextCalled()).toBe(true);
   });
 
   it('blocks non-owner non-admin user', () => {
@@ -202,9 +179,9 @@ describe('requireOwnerOrAdmin middleware', () => {
 
     requireOwnerOrAdmin(req, res, next);
 
-    assert.ok(!wasNextCalled(), 'next() should NOT be called');
-    assert.equal(getStatus(), 403);
-    assert.equal(getBody().error, 'Access denied');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(403);
+    expect(getBody().error).toBe('Access denied');
   });
 
   it('returns 401 when req.user is missing', () => {
@@ -212,8 +189,8 @@ describe('requireOwnerOrAdmin middleware', () => {
 
     requireOwnerOrAdmin(req, res, next);
 
-    assert.ok(!wasNextCalled());
-    assert.equal(getStatus(), 401);
-    assert.equal(getBody().error, 'Authentication required');
+    expect(wasNextCalled()).toBe(false);
+    expect(getStatus()).toBe(401);
+    expect(getBody().error).toBe('Authentication required');
   });
 });

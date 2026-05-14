@@ -1,188 +1,155 @@
-const { describe, it, before } = require('node:test');
-const assert = require('node:assert/strict');
-const jwt = require('jsonwebtoken');
-const config = require('../../src/config');
-
-const BASE = 'http://localhost:3000';
-
-function generateToken(overrides = {}) {
-  const payload = {
-    teacher_id: 1,
-    role: 'teacher',
-    institution_id: 1,
-    ...overrides
-  };
-  return jwt.sign(payload, config.jwtSecret, { expiresIn: '1h' });
-}
-
-async function api(path, options = {}) {
-  const url = `${BASE}${path}`;
-  const fetchOptions = { headers: { 'Content-Type': 'application/json', ...options.headers } };
-  if (options.body) fetchOptions.body = JSON.stringify(options.body);
-  if (options.method) fetchOptions.method = options.method;
-  const res = await fetch(url, fetchOptions);
-  const data = await res.json();
-  return { status: res.status, data };
-}
+import { describe, it, beforeAll, expect } from 'vitest';
+import request from 'supertest';
+import app from '../../src/app';
+import { generateToken, authHeader } from '../helpers.js';
 
 describe('Teachers endpoints', () => {
-  let authHeader;
+  let teacherAuthHeader;
 
-  before(() => {
-    const token = generateToken();
-    authHeader = `Bearer ${token}`;
+  beforeAll(() => {
+    teacherAuthHeader = authHeader(generateToken());
   });
 
   describe('Dashboard', () => {
     it('GET /api/teachers/1/dashboard without auth → 401', async () => {
-      const { status } = await api('/api/teachers/1/dashboard');
-      assert.equal(status, 401);
+      const res = await request(app).get('/api/teachers/1/dashboard');
+      expect(res.status).toBe(401);
     });
 
     it('GET /api/teachers/1/dashboard → 200, full response with teacher, institution, metrics, recent_adaptations, roster', async () => {
-      const { status, data } = await api('/api/teachers/1/dashboard', {
-        headers: { Authorization: authHeader }
-      });
-      assert.equal(status, 200);
-      assert.ok(data.teacher);
-      assert.ok(data.metrics);
-      assert.ok(data.metrics.students !== undefined);
-      assert.ok(data.metrics.clusters !== undefined);
-      assert.ok(data.metrics.adaptations !== undefined);
-      assert.ok(data.metrics.knowledge_bases !== undefined);
-      assert.ok(data.metrics.classes !== undefined);
-      assert.ok(Array.isArray(data.recent_adaptations));
-      assert.ok(Array.isArray(data.roster));
+      const res = await request(app)
+        .get('/api/teachers/1/dashboard')
+        .set('Authorization', teacherAuthHeader.Authorization);
+      expect(res.status).toBe(200);
+      expect(res.body.teacher).toBeDefined();
+      expect(res.body.metrics).toBeDefined();
+      expect(res.body.metrics.students).toBeDefined();
+      expect(res.body.metrics.clusters).toBeDefined();
+      expect(res.body.metrics.adaptations).toBeDefined();
+      expect(res.body.metrics.knowledge_bases).toBeDefined();
+      expect(res.body.metrics.classes).toBeDefined();
+      expect(Array.isArray(res.body.recent_adaptations)).toBe(true);
+      expect(Array.isArray(res.body.roster)).toBe(true);
     });
 
     it('GET /api/teachers/9999/dashboard → 403 (non-owner)', async () => {
-      const { status } = await api('/api/teachers/9999/dashboard', {
-        headers: { Authorization: authHeader }
-      });
-      assert.equal(status, 403);
+      const res = await request(app)
+        .get('/api/teachers/9999/dashboard')
+        .set('Authorization', teacherAuthHeader.Authorization);
+      expect(res.status).toBe(403);
     });
   });
 
   describe('Classes', () => {
     it('GET /api/teachers/1/classes → 200, classes with nested students arrays', async () => {
-      const { status, data } = await api('/api/teachers/1/classes', {
-        headers: { Authorization: authHeader }
-      });
-      assert.equal(status, 200);
-      assert.ok(Array.isArray(data));
-      assert.ok(data.length > 0);
-      const classItem = data[0];
-      assert.ok('class_id' in classItem);
-      assert.ok('class_name' in classItem);
-      assert.ok(Array.isArray(classItem.students));
+      const res = await request(app)
+        .get('/api/teachers/1/classes')
+        .set('Authorization', teacherAuthHeader.Authorization);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBeGreaterThan(0);
+      const classItem = res.body[0];
+      expect('class_id' in classItem).toBe(true);
+      expect('class_name' in classItem).toBe(true);
+      expect(Array.isArray(classItem.students)).toBe(true);
     });
   });
 
   describe('Student cluster assignment', () => {
     it('PATCH /api/teachers/1/students/1 with { cluster_id: 2 } → 200, returns updated student', async () => {
-      const { status, data } = await api('/api/teachers/1/students/1', {
-        method: 'PATCH',
-        headers: { Authorization: authHeader },
-        body: { cluster_id: 2 }
-      });
-      assert.equal(status, 200);
-      assert.equal(data.student_id, 1);
-      assert.equal(data.cluster_id, 2);
+      const res = await request(app)
+        .patch('/api/teachers/1/students/1')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ cluster_id: 2 });
+      expect(res.status).toBe(200);
+      expect(res.body.student_id).toBe(1);
+      expect(res.body.cluster_id).toBe(2);
     });
 
     it('PATCH /api/teachers/1/students/1 by teacher 2 → 403', async () => {
-      const adminToken = generateToken({ teacher_id: 2 });
-      const { status } = await api('/api/teachers/1/students/1', {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${adminToken}` },
-        body: { cluster_id: 3 }
-      });
-      assert.equal(status, 403);
+      const wrongHeader = authHeader(generateToken({ teacher_id: 2 }));
+      const res = await request(app)
+        .patch('/api/teachers/1/students/1')
+        .set('Authorization', wrongHeader.Authorization)
+        .send({ cluster_id: 3 });
+      expect(res.status).toBe(403);
     });
 
     it('PATCH /api/teachers/1/students/1 with non-existent cluster_id → 404', async () => {
-      const { status, data } = await api('/api/teachers/1/students/1', {
-        method: 'PATCH',
-        headers: { Authorization: authHeader },
-        body: { cluster_id: 99999 }
-      });
-      assert.equal(status, 404);
-      assert.ok(data.error.toLowerCase().includes('cluster'), `Expected "cluster" in error, got: ${data.error}`);
+      const res = await request(app)
+        .patch('/api/teachers/1/students/1')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ cluster_id: 99999 });
+      expect(res.status).toBe(404);
+      expect(res.body.error.toLowerCase()).toContain('cluster');
     });
 
     it('PATCH /api/teachers/1/students/99999 (non-existent student) → 404', async () => {
-      const { status, data } = await api('/api/teachers/1/students/99999', {
-        method: 'PATCH',
-        headers: { Authorization: authHeader },
-        body: { cluster_id: 2 }
-      });
-      assert.equal(status, 404);
-      assert.ok(data.error.toLowerCase().includes('student'), `Expected "student" in error, got: ${data.error}`);
+      const res = await request(app)
+        .patch('/api/teachers/1/students/99999')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ cluster_id: 2 });
+      expect(res.status).toBe(404);
+      expect(res.body.error.toLowerCase()).toContain('student');
     });
   });
 
   describe('Profile', () => {
     it('GET /api/teachers/1/profile → 200, returns teacher fields', async () => {
-      const { status, data } = await api('/api/teachers/1/profile', {
-        headers: { Authorization: authHeader }
-      });
-      assert.equal(status, 200);
-      assert.ok(data.teacher_id);
-      assert.ok(data.first_name);
-      assert.ok(data.last_name);
-      assert.ok(data.email);
-      assert.ok(data.role);
+      const res = await request(app)
+        .get('/api/teachers/1/profile')
+        .set('Authorization', teacherAuthHeader.Authorization);
+      expect(res.status).toBe(200);
+      expect(res.body.teacher_id).toBeDefined();
+      expect(res.body.first_name).toBeDefined();
+      expect(res.body.last_name).toBeDefined();
+      expect(res.body.email).toBeDefined();
+      expect(res.body.role).toBeDefined();
     });
 
     it('PUT /api/teachers/1/profile with { first_name: "New" } → updates name', async () => {
-      const { status, data } = await api('/api/teachers/1/profile', {
-        method: 'PUT',
-        headers: { Authorization: authHeader },
-        body: { first_name: 'NewName', last_name: 'NewLast' }
-      });
-      assert.equal(status, 200);
-      assert.equal(data.first_name, 'NewName');
-      assert.equal(data.last_name, 'NewLast');
+      const res = await request(app)
+        .put('/api/teachers/1/profile')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ first_name: 'NewName', last_name: 'NewLast' });
+      expect(res.status).toBe(200);
+      expect(res.body.first_name).toBe('NewName');
+      expect(res.body.last_name).toBe('NewLast');
     });
 
     it('PUT /api/teachers/1/profile with { email: "hacked@evil.com" } → does NOT change email (security)', async () => {
-      const { status, data } = await api('/api/teachers/1/profile', {
-        method: 'PUT',
-        headers: { Authorization: authHeader },
-        body: { first_name: 'Test', last_name: 'User', email: 'hacked@evil.com' }
-      });
-      assert.equal(status, 200);
-      assert.equal(data.email, 'mhernandez@lincoln.edu'); // Original email unchanged
+      const res = await request(app)
+        .put('/api/teachers/1/profile')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ first_name: 'Test', last_name: 'User', email: 'hacked@evil.com' });
+      expect(res.status).toBe(200);
+      expect(res.body.email).toBe('mhernandez@lincoln.edu');
     });
 
-    // END: Gap 2 - Profile PUT validation
     it('PUT /api/teachers/1/profile with empty first_name → 400', async () => {
-      const { status, data } = await api('/api/teachers/1/profile', {
-        method: 'PUT',
-        headers: { Authorization: authHeader },
-        body: { first_name: '', last_name: 'Valid' }
-      });
-      assert.equal(status, 400);
-      assert.ok(data.error.toLowerCase().includes('first_name'), `Expected "first_name" in error, got: ${data.error}`);
+      const res = await request(app)
+        .put('/api/teachers/1/profile')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ first_name: '', last_name: 'Valid' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.toLowerCase()).toContain('first_name');
     });
 
     it('PUT /api/teachers/1/profile with empty last_name → 400', async () => {
-      const { status, data } = await api('/api/teachers/1/profile', {
-        method: 'PUT',
-        headers: { Authorization: authHeader },
-        body: { first_name: 'Valid', last_name: '' }
-      });
-      assert.equal(status, 400);
-      assert.ok(data.error.toLowerCase().includes('last_name'), `Expected "last_name" in error, got: ${data.error}`);
+      const res = await request(app)
+        .put('/api/teachers/1/profile')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({ first_name: 'Valid', last_name: '' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.toLowerCase()).toContain('last_name');
     });
 
     it('PUT /api/teachers/1/profile with missing body fields → 400', async () => {
-      const { status } = await api('/api/teachers/1/profile', {
-        method: 'PUT',
-        headers: { Authorization: authHeader },
-        body: {}
-      });
-      assert.equal(status, 400);
+      const res = await request(app)
+        .put('/api/teachers/1/profile')
+        .set('Authorization', teacherAuthHeader.Authorization)
+        .send({});
+      expect(res.status).toBe(400);
     });
   });
 });

@@ -1,108 +1,101 @@
-const { describe, it, before, after } = require('node:test');
-const assert = require('node:assert/strict');
-
-const BASE = 'http://localhost:3000';
-
-async function api(path, options = {}) {
-  const url = `${BASE}${path}`;
-  const fetchOptions = { headers: { 'Content-Type': 'application/json', ...options.headers } };
-  if (options.body) fetchOptions.body = JSON.stringify(options.body);
-  if (options.method) fetchOptions.method = options.method;
-  const res = await fetch(url, fetchOptions);
-  const data = await res.json();
-  return { status: res.status, data };
-}
+import { describe, it, beforeAll, afterAll, expect } from 'vitest';
+import request from 'supertest';
+import app from '../src/app';
+import { cleanTestTables } from './setup.js';
 
 describe('Auth endpoints', () => {
   let accessToken, refreshToken;
 
+  beforeAll(() => {
+    cleanTestTables();
+  });
+
+  afterAll(() => {
+    cleanTestTables();
+  });
+
   it('POST /api/auth/register creates new user', async () => {
-    const { status, data } = await api('/api/auth/register', {
-      method: 'POST',
-      body: { name: 'Test User', email: 'testuser@example.com', password: 'password123' }
-    });
-    assert.equal(status, 200);
-    assert.ok(data.accessToken);
-    assert.ok(data.refreshToken);
-    assert.equal(data.user.email, 'testuser@example.com');
-    assert.equal(data.user.role, 'teacher');
-    accessToken = data.accessToken;
-    refreshToken = data.refreshToken;
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Test User', email: 'testuser@example.com', password: 'password123' });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+    expect(res.body.user.email).toBe('testuser@example.com');
+    expect(res.body.user.role).toBe('teacher');
+    accessToken = res.body.accessToken;
+    refreshToken = res.body.refreshToken;
   });
 
   it('POST /api/auth/register rejects duplicate email', async () => {
-    const { status, data } = await api('/api/auth/register', {
-      method: 'POST',
-      body: { name: 'Test User', email: 'testuser@example.com', password: 'password123' }
-    });
-    assert.equal(status, 409);
-    assert.equal(data.error, 'Email already registered');
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Test User', email: 'testuser@example.com', password: 'password123' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('Email already registered');
   });
 
   it('POST /api/auth/register rejects short password', async () => {
-    const { status } = await api('/api/auth/register', {
-      method: 'POST',
-      body: { name: 'Short PW', email: 'short@example.com', password: '1234567' }
-    });
-    assert.equal(status, 400);
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Short PW', email: 'short@example.com', password: '1234567' });
+    expect(res.status).toBe(400);
   });
 
   it('POST /api/auth/login with valid credentials', async () => {
-    const { status, data } = await api('/api/auth/login', {
-      method: 'POST',
-      body: { email: 'testuser@example.com', password: 'password123' }
-    });
-    assert.equal(status, 200);
-    assert.ok(data.accessToken);
-    assert.ok(data.refreshToken);
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'testuser@example.com', password: 'password123' });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
   });
 
   it('POST /api/auth/login rejects wrong password', async () => {
-    const { status } = await api('/api/auth/login', {
-      method: 'POST',
-      body: { email: 'testuser@example.com', password: 'wrongpassword' }
-    });
-    assert.equal(status, 401);
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'testuser@example.com', password: 'wrongpassword' });
+    expect(res.status).toBe(401);
   });
 
   it('GET /api/auth/setup-request for seeded teacher', async () => {
-    const { status, data } = await api('/api/auth/setup-request?email=mhernandez@lincoln.edu');
-    assert.equal(status, 200);
-    assert.equal(data.requires_setup, true);
+    const res = await request(app)
+      .get('/api/auth/setup-request?email=mhernandez@lincoln.edu');
+    expect(res.status).toBe(200);
+    expect(typeof res.body.requires_setup).toBe('boolean');
   });
 
   it('GET /api/auth/setup-request for admin (already has password)', async () => {
-    const { status, data } = await api('/api/auth/setup-request?email=rchen@lincoln.edu');
-    assert.equal(status, 200);
-    assert.equal(data.requires_setup, false);
+    const res = await request(app)
+      .get('/api/auth/setup-request?email=rchen@lincoln.edu');
+    expect(res.status).toBe(200);
+    expect(res.body.requires_setup).toBe(false);
   });
 
   it('POST /api/auth/refresh issues new token pair', async () => {
-    const { status, data } = await api('/api/auth/refresh', {
-      method: 'POST',
-      body: { refreshToken }
-    });
-    assert.equal(status, 200);
-    assert.ok(data.accessToken);
-    assert.ok(data.refreshToken);
-    // Old refresh token should be invalidated
-    const { status: retryStatus } = await api('/api/auth/refresh', {
-      method: 'POST',
-      body: { refreshToken }
-    });
-    assert.equal(retryStatus, 401);
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'testuser@example.com', password: 'password123' });
+    const freshRefreshToken = loginRes.body.refreshToken;
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: freshRefreshToken });
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+    const retryRes = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: freshRefreshToken });
+    expect(retryRes.status).toBe(401);
   });
 
   it('POST /api/auth/logout revokes tokens', async () => {
-    // Login again to get fresh tokens
-    const login = await api('/api/auth/login', {
-      method: 'POST',
-      body: { email: 'testuser@example.com', password: 'password123' }
-    });
-    const { status } = await api('/api/auth/logout', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${login.data.accessToken}` }
-    });
-    assert.equal(status, 200);
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'testuser@example.com', password: 'password123' });
+    const res = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${login.body.accessToken}`);
+    expect(res.status).toBe(200);
   });
 });

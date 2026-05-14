@@ -1,63 +1,40 @@
-const { describe, it, before } = require('node:test');
-const assert = require('node:assert/strict');
-const jwt = require('jsonwebtoken');
-const config = require('../../src/config');
-
-const BASE = 'http://localhost:3000';
-
-function generateToken(overrides = {}) {
-  const payload = {
-    teacher_id: 1,
-    role: 'teacher',
-    institution_id: 1,
-    ...overrides
-  };
-  return jwt.sign(payload, config.jwtSecret, { expiresIn: '1h' });
-}
-
-async function api(path, options = {}) {
-  const url = `${BASE}${path}`;
-  const fetchOptions = { headers: { 'Content-Type': 'application/json', ...options.headers } };
-  if (options.body) fetchOptions.body = JSON.stringify(options.body);
-  if (options.method) fetchOptions.method = options.method;
-  const res = await fetch(url, fetchOptions);
-  const data = await res.json();
-  return { status: res.status, data };
-}
+import { describe, it, beforeAll, expect } from 'vitest';
+import request from 'supertest';
+import app from '../../src/app';
+import { generateToken, authHeader } from '../helpers.js';
 
 describe('Knowledge bases endpoints', () => {
-  let authHeader;
+  let teacherAuthHeader;
 
-  before(() => {
-    const token = generateToken();
-    authHeader = `Bearer ${token}`;
+  beforeAll(() => {
+    teacherAuthHeader = authHeader(generateToken());
   });
 
   it('GET /api/knowledge-bases without auth → 401', async () => {
-    const { status } = await api('/api/knowledge-bases');
-    assert.equal(status, 401);
+    const res = await request(app).get('/api/knowledge-bases');
+    expect(res.status).toBe(401);
   });
 
   it('GET /api/knowledge-bases with auth → 200, array with kb_id, kb_name, category', async () => {
-    const { status, data } = await api('/api/knowledge-bases', {
-      headers: { Authorization: authHeader }
-    });
-    assert.equal(status, 200);
-    assert.ok(Array.isArray(data));
-    assert.ok(data.length > 0);
-    const kb = data[0];
-    assert.ok('kb_id' in kb);
-    assert.ok('kb_name' in kb);
-    assert.ok('category' in kb);
+    const res = await request(app)
+      .get('/api/knowledge-bases')
+      .set('Authorization', teacherAuthHeader.Authorization);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body.length).toBeGreaterThan(0);
+    const kb = res.body[0];
+    expect('kb_id' in kb).toBe(true);
+    expect('kb_name' in kb).toBe(true);
+    expect('category' in kb).toBe(true);
   });
 
   it('Response contains expected KB fields from seed data', async () => {
-    const { status, data } = await api('/api/knowledge-bases', {
-      headers: { Authorization: authHeader }
-    });
-    assert.equal(status, 200);
-    const kbNames = data.map(kb => kb.kb_name);
-    assert.ok(kbNames.includes('UDL (General)'));
-    assert.ok(kbNames.includes('CRP'));
+    const res = await request(app)
+      .get('/api/knowledge-bases')
+      .set('Authorization', teacherAuthHeader.Authorization);
+    expect(res.status).toBe(200);
+    const kbNames = res.body.map(kb => kb.kb_name);
+    expect(kbNames.includes('UDL (General)')).toBe(true);
+    expect(kbNames.includes('CRP')).toBe(true);
   });
 });

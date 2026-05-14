@@ -67,7 +67,7 @@ router.put('/:id/kbs', requireAuth, requireOwnerOrAdmin, (req, res) => {
     const foundKbs = db.prepare(query).all(...kbIdsArray);
 
     if (foundKbs.length !== kbIdsArray.length) {
-      const foundIds = new Set(foundKbs.map(kb => kb.kb_id));
+      const foundIds = new Set(foundKbs.map(r => r.kb_id));
       const missingIds = kbIdsArray.filter(id => !foundIds.has(id));
       throw new NotFoundError(`knowledge base id(s) not found: ${missingIds.join(', ')}`);
     }
@@ -85,7 +85,7 @@ router.put('/:id/kbs', requireAuth, requireOwnerOrAdmin, (req, res) => {
     }
   });
 
-  transaction.run(clusterId, kbIdsArray);
+  transaction(clusterId, kbIdsArray);
 
   // Return updated KBs
   const rows = db.prepare(`
